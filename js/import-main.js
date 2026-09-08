@@ -482,6 +482,7 @@ const buildOverlay  = document.getElementById('buildOverlay');
 const buildBarFill  = document.getElementById('buildBarFill');
 const buildBarLabel = document.getElementById('buildBarLabel');
 let overlayActive = false;
+let buildOverlayHideTimer = 0;
 
 function onProgress(pct, label) {
     if (!overlayActive) return;
@@ -491,6 +492,10 @@ function onProgress(pct, label) {
 
 function showBuildOverlay() {
     if (!buildBarFill || !buildOverlay) return;
+    if (buildOverlayHideTimer) {
+        clearTimeout(buildOverlayHideTimer);
+        buildOverlayHideTimer = 0;
+    }
     buildBarFill.style.transition = 'none';
     buildBarFill.style.transform = 'scaleX(0)';
     buildBarLabel.textContent = '';
@@ -501,7 +506,9 @@ function showBuildOverlay() {
 }
 
 function hideBuildOverlay() {
-    setTimeout(() => {
+    if (buildOverlayHideTimer) clearTimeout(buildOverlayHideTimer);
+    buildOverlayHideTimer = setTimeout(() => {
+        buildOverlayHideTimer = 0;
         overlayActive = false;
         if (buildOverlay) {
             buildOverlay.classList.add('hidden');
@@ -542,6 +549,7 @@ const mapCenterLatGroup = document.getElementById('mapCenterLatGroup');
 const sMapCenterLat = document.getElementById('sMapCenterLat');
 const vMapCenterLat = document.getElementById('vMapCenterLat');
 let mapProjectionRefreshTimer = 0;
+let mapProjectionRefreshToken = 0;
 
 function rebuildMapProjectionView() {
     if (!state.mapMode) return;
@@ -555,19 +563,44 @@ function rebuildMapProjectionView() {
     updateViewHint();
 }
 
+function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影…') {
+    if (!state.mapMode) return;
+    if (mapProjectionRefreshTimer) {
+        clearTimeout(mapProjectionRefreshTimer);
+        mapProjectionRefreshTimer = 0;
+    }
+    const token = ++mapProjectionRefreshToken;
+    showBuildOverlay();
+    onProgress(5, label);
+    setTimeout(() => {
+        if (token !== mapProjectionRefreshToken) return;
+        if (!state.mapMode) { hideBuildOverlay(); return; }
+        try {
+            onProgress(35, '正在构建地图网格…');
+            rebuildMapProjectionView();
+            onProgress(100, '地图投影已更新');
+        } catch (err) {
+            console.error('[MapProjection] Failed to rebuild projected map view:', err);
+            onProgress(100, '地图投影更新失败');
+        } finally {
+            hideBuildOverlay();
+        }
+    }, 50);
+}
+
 function scheduleMapProjectionRefresh() {
     if (!state.mapMode) return;
     if (mapProjectionRefreshTimer) clearTimeout(mapProjectionRefreshTimer);
     mapProjectionRefreshTimer = setTimeout(() => {
         mapProjectionRefreshTimer = 0;
-        rebuildMapProjectionView();
-    }, 80);
+        rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    }, 180);
 }
 
 if (sMapProjection) {
     sMapProjection.addEventListener('change', () => {
         state.mapProjection = sMapProjection.value;
-        rebuildMapProjectionView();
+        rebuildMapProjectionViewWithOverlay('正在切换地图投影…');
     });
 }
 
@@ -578,7 +611,9 @@ sMapCenterLon.addEventListener('input', () => {
     scheduleMapProjectionRefresh();
 });
 
-sMapCenterLon.addEventListener('change', rebuildMapProjectionView);
+sMapCenterLon.addEventListener('change', () => {
+    rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+});
 
 sMapCenterLat.addEventListener('input', () => {
     const lat = +sMapCenterLat.value;
@@ -587,7 +622,9 @@ sMapCenterLat.addEventListener('input', () => {
     scheduleMapProjectionRefresh();
 });
 
-sMapCenterLat.addEventListener('change', rebuildMapProjectionView);
+sMapCenterLat.addEventListener('change', () => {
+    rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+});
 
 function updateViewHint() {
     const globeHint = state.isTouchDevice
