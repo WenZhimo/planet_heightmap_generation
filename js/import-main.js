@@ -816,7 +816,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => setViewMod
 
     function reportExportError(err) {
         console.error(err);
-        alert('导出失败，请降低导出宽度后重试。');
+        alert('导出失败，请降低导出宽度、减少可选图层或更换浏览器后重试。');
     }
 
     function openModal() {
