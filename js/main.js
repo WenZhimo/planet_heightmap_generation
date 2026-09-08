@@ -31,12 +31,12 @@ function checkStale() {
     btn.classList.remove('stale', 'regen');
     if (plateChanged) {
         btn.classList.add('regen');
-        btn.textContent = 'Regenerate';
+        btn.textContent = '重新生成';
     } else if (detailChanged) {
         btn.classList.add('stale');
-        btn.textContent = 'Rebuild';
+        btn.textContent = '重建';
     } else {
-        btn.textContent = 'Build New World';
+        btn.textContent = '生成新世界';
     }
 }
 
@@ -94,11 +94,11 @@ function updateDetailWarning(detail) {
     if (detail > WARN_RED) {
         cg.classList.add('detail-red');
         warn.classList.add('red');
-        warn.textContent = '\u26A0 Very high \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 极高细节 - 生成可能较慢且不稳定';
     } else if (detail > WARN_ORANGE) {
         cg.classList.add('detail-orange');
         warn.classList.add('orange');
-        warn.textContent = '\u26A0 High detail \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 高细节 - 生成可能较慢且不稳定';
     } else {
         warn.textContent = '';
     }
@@ -280,36 +280,36 @@ mobileViewSwitch.addEventListener('change', (e) => {
 
 // Koppen climate zone descriptions for hover tooltips
 const KOPPEN_DESCRIPTIONS = {
-    Af:  'Tropical rainforest — Hot and wet year-round. Amazon Basin, Congo Basin, Southeast Asia.',
-    Am:  'Tropical monsoon — Brief dry season offset by heavy monsoon rains. Southern India, West Africa, Northern Australia.',
-    Aw:  'Tropical savanna — Distinct wet and dry seasons. Sub-Saharan Africa, Brazilian Cerrado, Northern Australia.',
-    BWh: 'Hot desert — Extremely dry with scorching summers. Sahara, Arabian Desert, Sonoran Desert.',
-    BWk: 'Cold desert — Arid with cold winters. Gobi Desert, Patagonian steppe, Great Basin.',
-    BSh: 'Hot steppe — Semi-arid grassland with hot summers. Sahel, outback Australia, northern Mexico.',
-    BSk: 'Cold steppe — Semi-arid with cold winters. Central Asian steppe, Montana, Anatolian plateau.',
-    Cfa: 'Humid subtropical — Hot humid summers, mild winters. Southeastern US, eastern China, Buenos Aires.',
-    Cfb: 'Oceanic — Mild year-round, cool summers, frequent rain. Western Europe, New Zealand, Pacific Northwest.',
-    Cfc: 'Subpolar oceanic — Cool year-round with short summers. Iceland, southern Chile, Faroe Islands.',
-    Csa: 'Hot-summer Mediterranean — Dry hot summers, mild wet winters. Southern California, Greece, coastal Turkey.',
-    Csb: 'Warm-summer Mediterranean — Dry warm summers, mild wet winters. San Francisco, Porto, Cape Town.',
-    Csc: 'Cold-summer Mediterranean — Cool dry summers, mild wet winters. Rare; high-altitude Mediterranean coasts.',
-    Cwa: 'Humid subtropical monsoon — Warm with dry winters. Hong Kong, northern India, Southeastern Brazil highlands.',
-    Cwb: 'Subtropical highland — Mild with dry winters. Mexico City, Bogota, Ethiopian Highlands.',
-    Cwc: 'Cold subtropical highland — Cool with dry winters. Rare; high-altitude tropical mountains.',
-    Dfa: 'Hot-summer continental — Hot summers, cold snowy winters. Chicago, Kyiv, Beijing.',
-    Dfb: 'Warm-summer continental — Warm summers, cold winters. Moscow, southern Scandinavia, New England.',
-    Dfc: 'Subarctic — Long cold winters, brief cool summers. Siberia, northern Canada, interior Alaska.',
-    Dfd: 'Extremely cold subarctic — Harshest winters on Earth. Yakutsk, Verkhoyansk (eastern Siberia).',
-    Dsa: 'Hot-summer continental, dry summer — Hot dry summers, cold winters. Parts of eastern Turkey, Iran.',
-    Dsb: 'Warm-summer continental, dry summer — Dry warm summers, cold winters. Parts of the western US highlands.',
-    Dsc: 'Subarctic, dry summer — Cool dry summers, very cold winters. Rare; high-altitude inland regions.',
-    Dsd: 'Extremely cold subarctic, dry summer — Very rare; extreme cold with dry summers.',
-    Dwa: 'Hot-summer continental, monsoon — Wet hot summers, dry cold winters. Northern China, Korea.',
-    Dwb: 'Warm-summer continental, monsoon — Wet warm summers, dry cold winters. Parts of northeast China.',
-    Dwc: 'Subarctic monsoon — Brief wet summers, long dry frigid winters. Eastern Siberia, far northeast China.',
-    Dwd: 'Extremely cold subarctic, monsoon — Extreme cold, driest in winter. Interior eastern Siberia.',
-    ET:  'Tundra — Permafrost, only warmest month above 0 C. Arctic coasts, high mountain plateaus.',
-    EF:  'Ice cap — Permanent ice, never above 0 C. Antarctica interior, Greenland ice sheet.',
+    Af:  '热带雨林气候 - 终年炎热湿润。典型区域：亚马逊盆地、刚果盆地、东南亚。',
+    Am:  '热带季风气候 - 短暂旱季后有强季风降雨。典型区域：印度南部、西非、澳大利亚北部。',
+    Aw:  '热带稀树草原气候 - 干湿季分明。典型区域：撒哈拉以南非洲、巴西塞拉多、澳大利亚北部。',
+    BWh: '热带沙漠气候 - 极端干燥且夏季酷热。典型区域：撒哈拉、阿拉伯沙漠、索诺兰沙漠。',
+    BWk: '冷沙漠气候 - 干旱且冬季寒冷。典型区域：戈壁、巴塔哥尼亚草原、大盆地。',
+    BSh: '热带草原气候 - 半干旱草原，夏季炎热。典型区域：萨赫勒、澳大利亚内陆、墨西哥北部。',
+    BSk: '冷草原气候 - 半干旱且冬季寒冷。典型区域：中亚草原、蒙大拿、安纳托利亚高原。',
+    Cfa: '湿润亚热带气候 - 夏季炎热潮湿，冬季温和。典型区域：美国东南部、中国东部、布宜诺斯艾利斯。',
+    Cfb: '海洋性气候 - 全年温和，夏季凉爽，降雨频繁。典型区域：西欧、新西兰、太平洋西北部。',
+    Cfc: '副极地海洋性气候 - 全年凉爽，夏季短。典型区域：冰岛、智利南部、法罗群岛。',
+    Csa: '夏热地中海气候 - 夏季干热，冬季温和多雨。典型区域：南加州、希腊、土耳其海岸。',
+    Csb: '夏暖地中海气候 - 夏季干暖，冬季温和多雨。典型区域：旧金山、波尔图、开普敦。',
+    Csc: '夏凉地中海气候 - 夏季凉爽干燥，冬季温和多雨。较罕见，多见于高海拔地中海海岸。',
+    Cwa: '季风型湿润亚热带气候 - 温暖且冬季干燥。典型区域：香港、印度北部、巴西东南高地。',
+    Cwb: '亚热带高原气候 - 温和且冬季干燥。典型区域：墨西哥城、波哥大、埃塞俄比亚高原。',
+    Cwc: '冷凉亚热带高原气候 - 凉爽且冬季干燥。较罕见，多见于热带高山。',
+    Dfa: '夏热大陆性气候 - 夏季炎热，冬季寒冷多雪。典型区域：芝加哥、基辅、北京。',
+    Dfb: '夏暖大陆性气候 - 夏季温暖，冬季寒冷。典型区域：莫斯科、斯堪的纳维亚南部、新英格兰。',
+    Dfc: '亚寒带气候 - 冬季漫长寒冷，夏季短暂凉爽。典型区域：西伯利亚、加拿大北部、阿拉斯加内陆。',
+    Dfd: '极寒亚寒带气候 - 地球上最严寒的冬季。典型区域：雅库茨克、维尔霍扬斯克。',
+    Dsa: '夏热大陆性干夏气候 - 夏季干热，冬季寒冷。典型区域：土耳其东部、伊朗部分地区。',
+    Dsb: '夏暖大陆性干夏气候 - 夏季干暖，冬季寒冷。典型区域：美国西部高地部分地区。',
+    Dsc: '亚寒带干夏气候 - 夏季凉爽干燥，冬季严寒。较罕见，多见于高海拔内陆。',
+    Dsd: '极寒亚寒带干夏气候 - 极罕见，兼具严寒和干夏。',
+    Dwa: '夏热大陆性季风气候 - 夏季湿热，冬季干冷。典型区域：中国北方、朝鲜半岛。',
+    Dwb: '夏暖大陆性季风气候 - 夏季温暖多雨，冬季干冷。典型区域：中国东北部分地区。',
+    Dwc: '亚寒带季风气候 - 夏季短暂多雨，冬季漫长严寒干燥。典型区域：东西伯利亚、中国东北远端。',
+    Dwd: '极寒亚寒带季风气候 - 极寒且冬季最干。典型区域：东西伯利亚内陆。',
+    ET:  '苔原气候 - 多年冻土，只有最暖月高于 0 C。典型区域：北极海岸、高山高原。',
+    EF:  '冰原气候 - 永久冰盖，全年不高于 0 C。典型区域：南极内陆、格陵兰冰盖。',
 };
 
 // Legend rendering
@@ -336,10 +336,10 @@ function updateLegend(layer) {
         const pcts = stops.map((_, i) => Math.round(i / (stops.length - 1) * 100));
         const gradStr = colors.map((c, i) => `${c} ${pcts[i]}%`).join(', ');
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${gradStr})"></div>` +
-            `<div class="legend-labels"><span>Deep Ocean</span><span>Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>深海</span><span>海平面</span><span>峰顶</span></div>`;
     } else if (layer === 'koppen') {
         // Koppen legend — Wikipedia link + swatches with hover tooltips
-        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">K\u00f6ppen climate classification</a></div>';
+        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">柯本气候分类</a></div>';
         html += '<div class="legend-koppen">';
         for (let i = 1; i < KOPPEN_CLASSES.length; i++) {
             const k = KOPPEN_CLASSES[i];
@@ -386,13 +386,13 @@ function updateLegend(layer) {
     } else if (layer === 'biome') {
         // Satellite biome legend — gradient bar of key biome colors
         const biomeStops = [
-            { color: [0.82,0.72,0.50], label: 'Desert' },
-            { color: [0.72,0.62,0.30], label: 'Steppe' },
-            { color: [0.42,0.50,0.18], label: 'Savanna' },
-            { color: [0.12,0.38,0.10], label: 'Forest' },
-            { color: [0.06,0.22,0.08], label: 'Taiga' },
-            { color: [0.35,0.32,0.22], label: 'Tundra' },
-            { color: [0.78,0.80,0.84], label: 'Ice' },
+            { color: [0.82,0.72,0.50], label: '沙漠' },
+            { color: [0.72,0.62,0.30], label: '草原' },
+            { color: [0.42,0.50,0.18], label: '稀树草原' },
+            { color: [0.12,0.38,0.10], label: '森林' },
+            { color: [0.06,0.22,0.08], label: '针叶林' },
+            { color: [0.35,0.32,0.22], label: '苔原' },
+            { color: [0.78,0.80,0.84], label: '冰原' },
         ];
         const biomeColors = biomeStops.map(s => {
             const [r, g, b] = s.color;
@@ -405,10 +405,10 @@ function updateLegend(layer) {
     } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
         // Rain shadow diverging legend: leeward shadow ↔ neutral ↔ windward boost
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
+            `<div class="legend-labels"><span>雨影</span><span>中性</span><span>迎风</span></div>`;
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
-            `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>海洋 / 海平面</span><span>峰顶</span></div>`;
     } else {
         vizLegend.innerHTML = '';
     }
@@ -666,7 +666,7 @@ const vMapCenterLon = document.getElementById('vMapCenterLon');
 
 sMapCenterLon.addEventListener('input', () => {
     const lon = +sMapCenterLon.value;
-    const suffix = lon > 0 ? 'E' : lon < 0 ? 'W' : '';
+    const suffix = lon > 0 ? '东' : lon < 0 ? '西' : '';
     vMapCenterLon.textContent = Math.abs(lon) + '\u00B0' + suffix;
     state.mapCenterLon = lon * Math.PI / 180;
     if (state.mapMode && state.mapMesh) {
@@ -703,7 +703,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         if (state.arrowGroup) state.arrowGroup.visible = false;
         if (!state.mapMesh) {
             showBuildOverlay();
-            onProgress(0, 'Building map mesh\u2026');
+            onProgress(0, '正在构建地图网格\u2026');
             // Yield to let the overlay paint, then build the mesh
             setTimeout(() => {
                 buildMapMesh();
@@ -819,7 +819,7 @@ if (debugLayerEl) {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        onProgress(0, 'Preparing export...');
+        onProgress(0, '正在准备导出...');
         await exportMap(type, w, onProgress);
         hideBuildOverlay();
     });
@@ -827,10 +827,10 @@ if (debugLayerEl) {
     // Export All — downloads Satellite, Climate, Heightmap, and Land Mask
     const exportAllBtn = document.getElementById('exportAllGo');
     const EXPORT_ALL_TYPES = [
-        { type: 'biome',          label: 'Satellite' },
-        { type: 'koppen',         label: 'Climate' },
-        { type: 'landheightmap',  label: 'Heightmap' },
-        { type: 'landmask',       label: 'Land Mask' },
+        { type: 'biome',          label: '卫星图' },
+        { type: 'koppen',         label: '气候图' },
+        { type: 'landheightmap',  label: '高度图' },
+        { type: 'landmask',       label: '陆地遮罩' },
     ];
 
     exportAllBtn.addEventListener('click', async () => {
@@ -840,7 +840,7 @@ if (debugLayerEl) {
 
         // Compute climate first if needed (Satellite & Climate require it)
         if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
+            onProgress(0, '正在计算气候...');
             await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
         }
 
@@ -870,7 +870,7 @@ setupEditMode();
     document.addEventListener('pending-edits-changed', () => {
         const count = state.pendingToggles.size;
         if (count > 0) {
-            rebuildLabel.textContent = `Rebuild (${count})`;
+            rebuildLabel.textContent = `重建 (${count})`;
             rebuildBtn.style.display = '';
         } else {
             rebuildBtn.style.display = 'none';
@@ -898,17 +898,17 @@ setupEditMode();
         // Show building state
         const btn = document.getElementById('generate');
         btn.disabled = true;
-        btn.textContent = 'Building\u2026';
+        btn.textContent = '生成中\u2026';
         btn.classList.add('generating');
 
         const hoverEl = document.getElementById('hoverInfo');
-        hoverEl.innerHTML = '\u23F3 Rebuilding\u2026';
+        hoverEl.innerHTML = '\u23F3 正在重建\u2026';
         hoverEl.style.display = 'block';
 
         const skipClimate = shouldSkipClimate();
         editRecomputeViaWorker(() => {
             btn.disabled = false;
-            btn.textContent = 'Build New World';
+            btn.textContent = '生成新世界';
             btn.classList.remove('generating');
             hoverEl.style.display = 'none';
             document.dispatchEvent(new CustomEvent('plates-edited'));
@@ -939,7 +939,7 @@ if (isMobileLayout()) {
 sidebarToggle.addEventListener('click', () => {
     const collapsed = uiPanel.classList.toggle('collapsed');
     sidebarToggle.innerHTML = collapsed ? '\u00BB' : '\u00AB';
-    sidebarToggle.title = collapsed ? 'Show panel' : 'Collapse panel';
+    sidebarToggle.title = collapsed ? '显示面板' : '收起面板';
 });
 
 // Bottom-sheet drag behavior (Pointer Events + setPointerCapture)
@@ -1086,7 +1086,7 @@ sidebarToggle.addEventListener('click', () => {
 // Mobile info text
 if (state.isTouchDevice) {
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Drag to rotate \u00b7 Pinch to zoom \u00b7 Use edit button to reshape';
+    if (infoEl) infoEl.textContent = '拖拽旋转 \u00b7 双指缩放 \u00b7 使用编辑按钮重塑';
 }
 
 // Disable export widths > 8192 on touch devices
@@ -1096,7 +1096,7 @@ if (state.isTouchDevice) {
         for (const opt of exportWidth.options) {
             if (+opt.value > 8192) {
                 opt.disabled = true;
-                opt.textContent = opt.value + ' (too large for mobile)';
+                opt.textContent = opt.value + '（移动端过大）';
             }
         }
     }
@@ -1155,7 +1155,7 @@ window.addEventListener('resize', () => {
         steps.forEach((s, idx) => s.classList.toggle('active', idx === i));
         dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
         backBtn.disabled = i === 0;
-        nextBtn.textContent = i === TOTAL - 1 ? 'Get Started' : 'Next';
+        nextBtn.textContent = i === TOTAL - 1 ? '开始使用' : '下一步';
     }
 
     function openModal() {
@@ -1195,7 +1195,7 @@ window.addEventListener('resize', () => {
         const step2 = card.querySelector('.tutorial-step[data-step="2"]');
         if (step2) {
             const p = step2.querySelector('p');
-            if (p) p.innerHTML = '<strong>Drag</strong> to rotate the globe. <strong>Pinch</strong> to zoom in and out. Tap the <strong>edit button</strong> (pencil icon) then <strong>tap</strong> plates to mark them for reshaping &mdash; select multiple, then hit <strong>Rebuild</strong> to apply all at once. Tap again to undo a pending selection.';
+            if (p) p.innerHTML = '<strong>拖拽</strong>旋转星球，<strong>双指捏合</strong>缩放。点击<strong>编辑按钮</strong>（铅笔图标）后，再<strong>轻点</strong>板块即可标记为待重塑；可多选后点击<strong>重建</strong>一次性应用。再次轻点可取消待处理选择。';
         }
     }
 
@@ -1234,7 +1234,7 @@ window.addEventListener('resize', () => {
         steps.forEach((s, idx) => s.classList.toggle('active', idx === i));
         dots.forEach((d, idx) => d.classList.toggle('active', idx === i));
         backBtn.disabled = i === 0;
-        nextBtn.textContent = i === TOTAL - 1 ? 'Got It' : 'Next';
+        nextBtn.textContent = i === TOTAL - 1 ? '知道了' : '下一步';
     }
 
     function closeModal() {

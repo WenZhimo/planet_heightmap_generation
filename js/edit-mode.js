@@ -103,21 +103,21 @@ function buildHoverHTML(region, plate) {
     const isOcean = d.plateIsOcean.has(plate);
     const isPending = state.pendingToggles.has(plate);
     const dot = `<span style="color:${isOcean ? '#4af' : '#6b3'}">●</span>`;
-    const action = state.isTouchDevice ? 'Tap' : 'Ctrl-click';
+    const action = state.isTouchDevice ? '轻点' : 'Ctrl 点击';
     const lines = [];
 
     // Line 1: plate type + edit hint
     if (isPending) {
-        const target = isOcean ? 'Land' : 'Ocean';
-        lines.push(`${dot} <b>${isOcean ? 'Ocean' : 'Land'} → ${target}</b> <span style="color:#fa0">(pending)</span> · ${action} to undo`);
+        const target = isOcean ? '陆地' : '海洋';
+        lines.push(`${dot} <b>${isOcean ? '海洋' : '陆地'} → ${target}</b> <span style="color:#fa0">（待应用）</span> · ${action}撤销`);
     } else {
-        lines.push(`${dot} <b>${isOcean ? 'Ocean' : 'Land'}</b> plate · ${action} to ${isOcean ? 'raise land' : 'flood'}`);
+        lines.push(`${dot} <b>${isOcean ? '海洋' : '陆地'}</b>板块 · ${action}${isOcean ? '抬升为陆地' : '淹没为海洋'}`);
     }
 
     // Elevation
     const elev = d.r_elevation[region];
     const elevKm = elevToHeightKm(elev).toFixed(1);
-    lines.push(`<span class="hi-label">Elev</span> ${elevKm} km`);
+    lines.push(`<span class="hi-label">高程</span> ${elevKm} km`);
 
     // Lat/Lon from r_xyz
     const x = d.r_xyz[3 * region];
@@ -125,9 +125,9 @@ function buildHoverHTML(region, plate) {
     const z = d.r_xyz[3 * region + 2];
     const lat = Math.asin(Math.max(-1, Math.min(1, y))) * (180 / Math.PI);
     const lon = Math.atan2(x, z) * (180 / Math.PI);
-    const latStr = Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S');
-    const lonStr = Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
-    lines.push(`<span class="hi-label">Coord</span> ${latStr}, ${lonStr}`);
+    const latStr = Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? '北' : '南');
+    const lonStr = Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? '东' : '西');
+    lines.push(`<span class="hi-label">坐标</span> ${latStr}, ${lonStr}`);
 
     // Climate data (only if computed)
     if (state.climateComputed && d.r_temperature_summer) {
@@ -135,15 +135,15 @@ function buildHoverHTML(region, plate) {
         const tW = -45 + Math.max(0, Math.min(1, d.r_temperature_winter[region])) * 90;
         if (elev <= 0) {
             // Ocean: show as SST
-            lines.push(`<span class="hi-label">SST</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
+            lines.push(`<span class="hi-label">海温</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
         } else {
-            lines.push(`<span class="hi-label">Temp</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
+            lines.push(`<span class="hi-label">温度</span> ${tS.toFixed(0)}°C / ${tW.toFixed(0)}°C`);
 
             // Precipitation (land only)
             if (d.r_precip_summer) {
                 const pS = (Math.max(0, Math.min(1, d.r_precip_summer[region])) * 1000).toFixed(0);
                 const pW = (Math.max(0, Math.min(1, d.r_precip_winter[region])) * 1000).toFixed(0);
-                lines.push(`<span class="hi-label">Precip</span> ${pS} / ${pW} mm`);
+                lines.push(`<span class="hi-label">降水</span> ${pS} / ${pW} mm`);
             }
 
             // Köppen (land only)
@@ -153,7 +153,7 @@ function buildHoverHTML(region, plate) {
                 if (kc && kc.code !== 'Ocean') {
                     const [r, g, b] = kc.color;
                     const hex = '#' + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
-                    lines.push(`<span class="hi-label">Clima</span> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${hex};vertical-align:middle;margin-right:4px"></span>${kc.code} — ${kc.name}`);
+                    lines.push(`<span class="hi-label">气候</span> <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${hex};vertical-align:middle;margin-right:4px"></span>${kc.code} - ${kc.name}`);
                 }
             }
         }

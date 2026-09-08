@@ -67,7 +67,7 @@ let _t0 = 0;
 function resetUI() {
     const btn = document.getElementById('generate');
     btn.disabled = false;
-    btn.textContent = 'Build New World';
+    btn.textContent = '生成新世界';
     btn.classList.remove('generating', 'stale');
 }
 
@@ -372,12 +372,12 @@ if (worker) {
 
                 const ms = tTotal.toFixed(0);
                 document.getElementById('stats').innerHTML =
-                    `Regions: ${mesh.numRegions.toLocaleString()}<br>` +
-                    `Triangles: ${mesh.numTriangles.toLocaleString()}<br>` +
-                    `Generated in ${ms} ms<br>` +
-                    `<span style="color:#445;font-size:10px">worker ${tWorker.toFixed(0)} · render ${tBuild.toFixed(0)}</span>`;
+                    `区域数：${mesh.numRegions.toLocaleString()}<br>` +
+                    `三角形：${mesh.numTriangles.toLocaleString()}<br>` +
+                    `生成耗时：${ms} ms<br>` +
+                    `<span style="color:#445;font-size:10px">worker ${tWorker.toFixed(0)} · 渲染 ${tBuild.toFixed(0)}</span>`;
 
-                if (_onProgress) _onProgress(100, 'Done');
+                if (_onProgress) _onProgress(100, '完成');
                 resetUI();
                 document.getElementById('generate').dispatchEvent(new CustomEvent('generate-done'));
                 if (_onDone) { _onDone(); _onDone = null; }
@@ -498,7 +498,7 @@ if (worker) {
                     'color:#ff6;font-weight:bold', ''
                 );
 
-                if (_onProgress) _onProgress(100, 'Done');
+                if (_onProgress) _onProgress(100, '完成');
                 if (_onDone) { _onDone(); _onDone = null; }
                 break;
             }
@@ -628,7 +628,7 @@ if (worker) {
                     'color:#ff6;font-weight:bold', ''
                 );
 
-                if (_onProgress) _onProgress(100, 'Done');
+                if (_onProgress) _onProgress(100, '完成');
                 if (_onDone) { _onDone(); _onDone = null; }
                 break;
             }
@@ -672,7 +672,7 @@ if (worker) {
                     'color:#ff6;font-weight:bold', ''
                 );
 
-                if (_onProgress) _onProgress(100, 'Done');
+                if (_onProgress) _onProgress(100, '完成');
                 if (_onDone) { _onDone(); _onDone = null; }
                 break;
             }
@@ -685,7 +685,7 @@ if (worker) {
     };
 
     worker.onerror = (e) => {
-        fail(e.message || 'Worker crashed');
+        fail(e.message || 'Worker 崩溃');
         if (_onDone) { _onDone(); _onDone = null; }
     };
 }
@@ -721,14 +721,14 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
     const ctx = {};
 
     const stages = [
-        { pct: 0, label: 'Shaping the world\u2026', work() {
+        { pct: 0, label: '正在塑造世界\u2026', work() {
             ctx.seed = overrideSeed ?? Math.floor(Math.random() * 16777216);
             ctx.rng = m.rng.makeRng(ctx.seed);
             const { mesh, r_xyz } = m.sphere.buildSphere(N, jitter, ctx.rng);
             ctx.mesh = mesh; ctx.r_xyz = r_xyz;
             ctx.t_xyz = m.sphere.generateTriangleCenters(mesh, r_xyz);
         }},
-        { pct: 10, label: 'Generating coarse plates\u2026', work() {
+        { pct: 10, label: '正在生成粗略板块\u2026', work() {
             const { coarseMesh, coarse_xyz, coarse_r_plate, coarsePlateSeeds, coarsePlateVec, coarsePlateIsOcean } =
                 m.coarsePlates.generateCoarsePlates(ctx.seed, P, numContinents, continentSizeVariety, landCoverage);
             ctx.coarseMesh = coarseMesh; ctx.coarse_xyz = coarse_xyz;
@@ -736,11 +736,11 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
             ctx.plateSeeds = coarsePlateSeeds; ctx.plateVec = coarsePlateVec;
             ctx.coarsePlateIsOcean = coarsePlateIsOcean;
         }},
-        { pct: 18, label: 'Projecting plates\u2026', work() {
+        { pct: 18, label: '正在投射板块\u2026', work() {
             ctx.r_plate = m.coarsePlates.projectCoarsePlates(ctx.mesh, ctx.r_xyz, ctx.coarseMesh, ctx.coarse_xyz, ctx.coarse_r_plate, ctx.seed, P);
             m.plates.smoothAndReconnectPlates(ctx.mesh, ctx.r_plate, ctx.plateSeeds, 3);
         }},
-        { pct: 25, label: 'Carving oceans\u2026', work() {
+        { pct: 25, label: '正在雕刻海洋\u2026', work() {
             const plateIsOcean = ctx.coarsePlateIsOcean;
             ctx.originalPlateIsOcean = new Set(plateIsOcean);
             if (toggledIndices.length > 0) {
@@ -765,7 +765,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
             ctx.plateDensityLand = plateDensityLand; ctx.plateDensityOcean = plateDensityOcean;
             ctx.noise = new m.simplex.SimplexNoise(ctx.seed);
         }},
-        { pct: 35, label: 'Raising mountains\u2026', work() {
+        { pct: 35, label: '正在抬升山脉\u2026', work() {
             const { r_elevation, mountain_r, coastline_r, ocean_r, r_stress, debugLayers, _timing } =
                 m.elev.assignElevation(ctx.mesh, ctx.r_xyz, ctx.plateIsOcean, ctx.r_plate, ctx.plateVec, ctx.plateSeeds, ctx.noise, nMag, ctx.seed, 5, ctx.plateDensity);
             ctx.r_elevation = r_elevation; ctx.mountain_r = mountain_r; ctx.coastline_r = coastline_r;
@@ -841,7 +841,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
             }
             ctx.t_elevation = t_elevation;
         }},
-        { pct: 85, label: 'Painting the surface\u2026', work() {
+        { pct: 85, label: '正在绘制表面\u2026', work() {
             state.curData = {
                 mesh: ctx.mesh, r_xyz: ctx.r_xyz, t_xyz: ctx.t_xyz,
                 r_plate: ctx.r_plate, plateSeeds: ctx.plateSeeds, plateVec: ctx.plateVec,
@@ -873,7 +873,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
             };
             state.climateComputed = !skipClimate;
             buildMesh();
-            progress(100, 'Done');
+            progress(100, '完成');
             resetUI();
             btn.dispatchEvent(new CustomEvent('generate-done'));
         }}
@@ -895,7 +895,7 @@ function generateFallback(overrideSeed, toggledIndices, onProgress, skipClimate)
 export function generate(overrideSeed, toggledIndices = [], onProgress, skipClimate = false) {
     const btn = document.getElementById('generate');
     btn.disabled = true;
-    btn.textContent = 'Building\u2026';
+    btn.textContent = '生成中\u2026';
     btn.classList.add('generating');
 
     _onProgress = onProgress || (() => {});

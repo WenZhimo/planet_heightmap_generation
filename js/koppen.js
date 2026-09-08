@@ -20,37 +20,37 @@ import { smoothstep } from './wind.js';
  * Köppen class definitions: ID → { code, name, color [r,g,b] 0-1 }.
  */
 export const KOPPEN_CLASSES = [
-    { code: 'Ocean',  name: 'Ocean',                              color: [0.29, 0.44, 0.65] },  // #4a6fa5
-    { code: 'Af',     name: 'Tropical rainforest',                color: [0.00, 0.00, 1.00] },  // #0000FF
-    { code: 'Am',     name: 'Tropical monsoon',                   color: [0.00, 0.47, 1.00] },  // #0077FF
-    { code: 'Aw',     name: 'Tropical savanna',                   color: [0.27, 0.67, 0.98] },  // #46AAFA
-    { code: 'BWh',    name: 'Hot desert',                         color: [1.00, 0.00, 0.00] },  // #FF0000
-    { code: 'BWk',    name: 'Cold desert',                        color: [1.00, 0.59, 0.59] },  // #FF9696
-    { code: 'BSh',    name: 'Hot steppe',                         color: [0.96, 0.65, 0.00] },  // #F5A500
-    { code: 'BSk',    name: 'Cold steppe',                        color: [1.00, 0.86, 0.39] },  // #FFDB63
-    { code: 'Cfa',    name: 'Humid subtropical',                  color: [0.78, 1.00, 0.31] },  // #C8FF50
-    { code: 'Cfb',    name: 'Oceanic',                            color: [0.39, 1.00, 0.31] },  // #64FF50
-    { code: 'Cfc',    name: 'Subpolar oceanic',                   color: [0.20, 0.78, 0.00] },  // #32C800
-    { code: 'Csa',    name: 'Hot-summer Mediterranean',           color: [1.00, 1.00, 0.00] },  // #FFFF00
-    { code: 'Csb',    name: 'Warm-summer Mediterranean',          color: [0.78, 0.78, 0.00] },  // #C8C800
-    { code: 'Csc',    name: 'Cold-summer Mediterranean',          color: [0.59, 0.59, 0.00] },  // #969600
-    { code: 'Cwa',    name: 'Humid subtropical (monsoon)',         color: [0.59, 1.00, 0.59] },  // #96FF96
-    { code: 'Cwb',    name: 'Subtropical highland',               color: [0.39, 0.78, 0.39] },  // #63C764
-    { code: 'Cwc',    name: 'Cold subtropical highland',          color: [0.20, 0.59, 0.20] },  // #329633
-    { code: 'Dfa',    name: 'Hot-summer continental',             color: [0.00, 1.00, 1.00] },  // #00FFFF
-    { code: 'Dfb',    name: 'Warm-summer continental',            color: [0.22, 0.78, 1.00] },  // #37C8FF
-    { code: 'Dfc',    name: 'Subarctic',                          color: [0.00, 0.49, 0.49] },  // #007D7D
-    { code: 'Dfd',    name: 'Extremely cold subarctic',           color: [0.00, 0.27, 0.37] },  // #00465F
-    { code: 'Dsa',    name: 'Hot-summer continental (dry summer)', color: [0.90, 0.50, 1.00] },  // #E680FF
-    { code: 'Dsb',    name: 'Warm-summer continental (dry summer)', color: [0.70, 0.35, 0.85] },  // #B359D9
-    { code: 'Dsc',    name: 'Subarctic (dry summer)',              color: [0.50, 0.20, 0.65] },  // #8033A6
-    { code: 'Dsd',    name: 'Extremely cold subarctic (dry summer)', color: [0.35, 0.10, 0.45] },  // #591A73
-    { code: 'Dwa',    name: 'Hot-summer continental (monsoon)',    color: [0.67, 0.69, 1.00] },  // #ABB1FF
-    { code: 'Dwb',    name: 'Warm-summer continental (monsoon)',   color: [0.43, 0.47, 0.78] },  // #6E77C8
-    { code: 'Dwc',    name: 'Subarctic (monsoon)',                color: [0.29, 0.31, 0.78] },  // #4A50C8
-    { code: 'Dwd',    name: 'Extremely cold subarctic (monsoon)', color: [0.20, 0.00, 0.53] },  // #320087
-    { code: 'ET',     name: 'Tundra',                             color: [0.70, 0.70, 0.70] },  // #B2B2B2
-    { code: 'EF',     name: 'Ice cap',                            color: [0.41, 0.41, 0.41] },  // #686868
+    { code: 'Ocean',  name: '海洋',                               color: [0.29, 0.44, 0.65] },  // #4a6fa5
+    { code: 'Af',     name: '热带雨林气候',                       color: [0.00, 0.00, 1.00] },  // #0000FF
+    { code: 'Am',     name: '热带季风气候',                       color: [0.00, 0.47, 1.00] },  // #0077FF
+    { code: 'Aw',     name: '热带稀树草原气候',                   color: [0.27, 0.67, 0.98] },  // #46AAFA
+    { code: 'BWh',    name: '热带沙漠气候',                       color: [1.00, 0.00, 0.00] },  // #FF0000
+    { code: 'BWk',    name: '冷沙漠气候',                         color: [1.00, 0.59, 0.59] },  // #FF9696
+    { code: 'BSh',    name: '热带草原气候',                       color: [0.96, 0.65, 0.00] },  // #F5A500
+    { code: 'BSk',    name: '冷草原气候',                         color: [1.00, 0.86, 0.39] },  // #FFDB63
+    { code: 'Cfa',    name: '湿润亚热带气候',                     color: [0.78, 1.00, 0.31] },  // #C8FF50
+    { code: 'Cfb',    name: '海洋性气候',                         color: [0.39, 1.00, 0.31] },  // #64FF50
+    { code: 'Cfc',    name: '副极地海洋性气候',                   color: [0.20, 0.78, 0.00] },  // #32C800
+    { code: 'Csa',    name: '夏热地中海气候',                     color: [1.00, 1.00, 0.00] },  // #FFFF00
+    { code: 'Csb',    name: '夏暖地中海气候',                     color: [0.78, 0.78, 0.00] },  // #C8C800
+    { code: 'Csc',    name: '夏凉地中海气候',                     color: [0.59, 0.59, 0.00] },  // #969600
+    { code: 'Cwa',    name: '季风型湿润亚热带气候',               color: [0.59, 1.00, 0.59] },  // #96FF96
+    { code: 'Cwb',    name: '亚热带高原气候',                     color: [0.39, 0.78, 0.39] },  // #63C764
+    { code: 'Cwc',    name: '冷凉亚热带高原气候',                 color: [0.20, 0.59, 0.20] },  // #329633
+    { code: 'Dfa',    name: '夏热大陆性气候',                     color: [0.00, 1.00, 1.00] },  // #00FFFF
+    { code: 'Dfb',    name: '夏暖大陆性气候',                     color: [0.22, 0.78, 1.00] },  // #37C8FF
+    { code: 'Dfc',    name: '亚寒带气候',                         color: [0.00, 0.49, 0.49] },  // #007D7D
+    { code: 'Dfd',    name: '极寒亚寒带气候',                     color: [0.00, 0.27, 0.37] },  // #00465F
+    { code: 'Dsa',    name: '夏热大陆性干夏气候',                 color: [0.90, 0.50, 1.00] },  // #E680FF
+    { code: 'Dsb',    name: '夏暖大陆性干夏气候',                 color: [0.70, 0.35, 0.85] },  // #B359D9
+    { code: 'Dsc',    name: '亚寒带干夏气候',                     color: [0.50, 0.20, 0.65] },  // #8033A6
+    { code: 'Dsd',    name: '极寒亚寒带干夏气候',                 color: [0.35, 0.10, 0.45] },  // #591A73
+    { code: 'Dwa',    name: '夏热大陆性季风气候',                 color: [0.67, 0.69, 1.00] },  // #ABB1FF
+    { code: 'Dwb',    name: '夏暖大陆性季风气候',                 color: [0.43, 0.47, 0.78] },  // #6E77C8
+    { code: 'Dwc',    name: '亚寒带季风气候',                     color: [0.29, 0.31, 0.78] },  // #4A50C8
+    { code: 'Dwd',    name: '极寒亚寒带季风气候',                 color: [0.20, 0.00, 0.53] },  // #320087
+    { code: 'ET',     name: '苔原气候',                           color: [0.70, 0.70, 0.70] },  // #B2B2B2
+    { code: 'EF',     name: '冰原气候',                           color: [0.41, 0.41, 0.41] },  // #686868
 ];
 
 // Lookup table: KOPPEN_CLASSES code → ID (built once at import time)

@@ -2147,7 +2147,7 @@ export async function exportMap(type, width, onProgress) {
             }
 
             tilesDone++;
-            if (onProgress) onProgress(tilesDone / totalTiles * 80, 'Rendering...');
+            if (onProgress) onProgress(tilesDone / totalTiles * 80, '正在渲染...');
             await new Promise(r => setTimeout(r, 0));
         }
     }
@@ -2157,7 +2157,7 @@ export async function exportMap(type, width, onProgress) {
     mapMesh.material.dispose();
 
     // Encode & download
-    if (onProgress) onProgress(85, 'Encoding PNG...');
+    if (onProgress) onProgress(85, '正在编码 PNG...');
     await new Promise(r => setTimeout(r, 0));
 
     const code = location.hash.replace(/^#/, '').trim() || (state.curData ? state.curData.seed : '');
@@ -2428,7 +2428,7 @@ export async function exportMapBatch(types, width, onProgress) {
                 }
 
                 tilesDone++;
-                if (onProgress) onProgress(tilesDone / totalTiles * 80, `Exporting ${label} (${ti+1}/${total}): Rendering...`);
+                if (onProgress) onProgress(tilesDone / totalTiles * 80, `正在导出 ${label} (${ti+1}/${total})：渲染中...`);
                 await new Promise(r => setTimeout(r, 0));
             }
         }
@@ -2439,7 +2439,7 @@ export async function exportMapBatch(types, width, onProgress) {
         mat.dispose();
 
         // Encode & download
-        if (onProgress) onProgress(85, `Exporting ${label} (${ti+1}/${total}): Encoding PNG...`);
+        if (onProgress) onProgress(85, `正在导出 ${label} (${ti+1}/${total})：编码 PNG...`);
         await new Promise(r => setTimeout(r, 0));
 
         const filename = exportFilename(type, code);

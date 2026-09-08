@@ -59,7 +59,7 @@ function loadImageAsHeightmap(img, displayName) {
 (function loadDefaultHeightmap() {
     const img = new Image();
     img.onload = () => {
-        loadImageAsHeightmap(img, 'Earth (default)');
+        loadImageAsHeightmap(img, '地球（默认）');
         importBtn.click();
     };
     img.src = 'assets/earth.png';
@@ -95,11 +95,11 @@ function updateDetailWarning(detail) {
     if (detail > WARN_RED) {
         cg.classList.add('detail-red');
         warn.classList.add('red');
-        warn.textContent = '\u26A0 Very high \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 极高细节 - 生成可能较慢且不稳定';
     } else if (detail > WARN_ORANGE) {
         cg.classList.add('detail-orange');
         warn.classList.add('orange');
-        warn.textContent = '\u26A0 High detail \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 高细节 - 生成可能较慢且不稳定';
     } else {
         warn.textContent = '';
     }
@@ -214,7 +214,7 @@ reapplyBtn.addEventListener('click', () => {
 importBtn.addEventListener('click', () => {
     if (!storedGrayscale) return;
     importBtn.disabled = true;
-    importBtn.textContent = 'Importing\u2026';
+    importBtn.textContent = '导入中\u2026';
     clearReapplyPending();
     buildWindArrows(null);
     buildOceanCurrentArrows(null);
@@ -246,11 +246,11 @@ document.body.appendChild(hiddenGenBtn);
 hiddenGenBtn.addEventListener('generate-done', () => {
     hideBuildOverlay();
     importBtn.disabled = false;
-    importBtn.textContent = 'Import';
+    importBtn.textContent = '导入';
     state.importedHeightmap = true;
     // Update info text
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Drag to rotate \u00b7 Scroll to zoom';
+    if (infoEl) infoEl.textContent = '拖拽旋转 \u00b7 滚轮缩放';
     // Sync view
     if (!state.climateComputed && CLIMATE_LAYERS.has(state.debugLayer)) {
         state.debugLayer = '';
@@ -363,36 +363,36 @@ if (debugLayerEl) {
 // ─── Legend ────────────────────────────────────────────────────────
 
 const KOPPEN_DESCRIPTIONS = {
-    Af:  'Tropical rainforest \u2014 Hot and wet year-round.',
-    Am:  'Tropical monsoon \u2014 Brief dry season offset by heavy monsoon rains.',
-    Aw:  'Tropical savanna \u2014 Distinct wet and dry seasons.',
-    BWh: 'Hot desert \u2014 Extremely dry with scorching summers.',
-    BWk: 'Cold desert \u2014 Arid with cold winters.',
-    BSh: 'Hot steppe \u2014 Semi-arid grassland with hot summers.',
-    BSk: 'Cold steppe \u2014 Semi-arid with cold winters.',
-    Cfa: 'Humid subtropical \u2014 Hot humid summers, mild winters.',
-    Cfb: 'Oceanic \u2014 Mild year-round, cool summers, frequent rain.',
-    Cfc: 'Subpolar oceanic \u2014 Cool year-round with short summers.',
-    Csa: 'Hot-summer Mediterranean \u2014 Dry hot summers, mild wet winters.',
-    Csb: 'Warm-summer Mediterranean \u2014 Dry warm summers, mild wet winters.',
-    Csc: 'Cold-summer Mediterranean \u2014 Cool dry summers, mild wet winters.',
-    Cwa: 'Humid subtropical monsoon \u2014 Warm with dry winters.',
-    Cwb: 'Subtropical highland \u2014 Mild with dry winters.',
-    Cwc: 'Cold subtropical highland \u2014 Cool with dry winters.',
-    Dfa: 'Hot-summer continental \u2014 Hot summers, cold snowy winters.',
-    Dfb: 'Warm-summer continental \u2014 Warm summers, cold winters.',
-    Dfc: 'Subarctic \u2014 Long cold winters, brief cool summers.',
-    Dfd: 'Extremely cold subarctic \u2014 Harshest winters on Earth.',
-    Dsa: 'Hot-summer continental, dry summer.',
-    Dsb: 'Warm-summer continental, dry summer.',
-    Dsc: 'Subarctic, dry summer.',
-    Dsd: 'Extremely cold subarctic, dry summer.',
-    Dwa: 'Hot-summer continental, monsoon.',
-    Dwb: 'Warm-summer continental, monsoon.',
-    Dwc: 'Subarctic monsoon \u2014 Brief wet summers, long frigid winters.',
-    Dwd: 'Extremely cold subarctic, monsoon.',
-    ET:  'Tundra \u2014 Permafrost, only warmest month above 0\u00b0C.',
-    EF:  'Ice cap \u2014 Permanent ice, never above 0\u00b0C.',
+    Af:  '热带雨林气候 - 终年炎热湿润。',
+    Am:  '热带季风气候 - 短暂旱季后有强季风降雨。',
+    Aw:  '热带稀树草原气候 - 干湿季分明。',
+    BWh: '热带沙漠气候 - 极端干燥且夏季酷热。',
+    BWk: '冷沙漠气候 - 干旱且冬季寒冷。',
+    BSh: '热带草原气候 - 半干旱草原，夏季炎热。',
+    BSk: '冷草原气候 - 半干旱且冬季寒冷。',
+    Cfa: '湿润亚热带气候 - 夏季炎热潮湿，冬季温和。',
+    Cfb: '海洋性气候 - 全年温和，夏季凉爽，降雨频繁。',
+    Cfc: '副极地海洋性气候 - 全年凉爽，夏季短。',
+    Csa: '夏热地中海气候 - 夏季干热，冬季温和多雨。',
+    Csb: '夏暖地中海气候 - 夏季干暖，冬季温和多雨。',
+    Csc: '夏凉地中海气候 - 夏季凉爽干燥，冬季温和多雨。',
+    Cwa: '季风型湿润亚热带气候 - 温暖且冬季干燥。',
+    Cwb: '亚热带高原气候 - 温和且冬季干燥。',
+    Cwc: '冷凉亚热带高原气候 - 凉爽且冬季干燥。',
+    Dfa: '夏热大陆性气候 - 夏季炎热，冬季寒冷多雪。',
+    Dfb: '夏暖大陆性气候 - 夏季温暖，冬季寒冷。',
+    Dfc: '亚寒带气候 - 冬季漫长寒冷，夏季短暂凉爽。',
+    Dfd: '极寒亚寒带气候 - 地球上最严寒的冬季。',
+    Dsa: '夏热大陆性干夏气候 - 夏季干热，冬季寒冷。',
+    Dsb: '夏暖大陆性干夏气候 - 夏季干暖，冬季寒冷。',
+    Dsc: '亚寒带干夏气候 - 夏季凉爽干燥，冬季严寒。',
+    Dsd: '极寒亚寒带干夏气候 - 极罕见，兼具严寒和干夏。',
+    Dwa: '夏热大陆性季风气候 - 夏季湿热，冬季干冷。',
+    Dwb: '夏暖大陆性季风气候 - 夏季温暖多雨，冬季干冷。',
+    Dwc: '亚寒带季风气候 - 夏季短暂多雨，冬季漫长严寒。',
+    Dwd: '极寒亚寒带季风气候 - 极寒且冬季最干。',
+    ET:  '苔原气候 - 多年冻土，只有最暖月高于 0°C。',
+    EF:  '冰原气候 - 永久冰盖，全年不高于 0°C。',
 };
 
 function updateLegend(layer) {
@@ -409,9 +409,9 @@ function updateLegend(layer) {
         const pcts = stops.map((_, i) => Math.round(i / (stops.length - 1) * 100));
         const gradStr = colors.map((c, i) => `${c} ${pcts[i]}%`).join(', ');
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${gradStr})"></div>` +
-            `<div class="legend-labels"><span>Deep Ocean</span><span>Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>深海</span><span>海平面</span><span>峰顶</span></div>`;
     } else if (layer === 'koppen') {
-        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">K\u00f6ppen climate classification</a></div>';
+        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">柯本气候分类</a></div>';
         html += '<div class="legend-koppen">';
         for (let i = 1; i < KOPPEN_CLASSES.length; i++) {
             const k = KOPPEN_CLASSES[i];
@@ -452,13 +452,13 @@ function updateLegend(layer) {
         });
     } else if (layer === 'biome') {
         const biomeStops = [
-            { color: [0.82,0.72,0.50], label: 'Desert' },
-            { color: [0.72,0.62,0.30], label: 'Steppe' },
-            { color: [0.42,0.50,0.18], label: 'Savanna' },
-            { color: [0.12,0.38,0.10], label: 'Forest' },
-            { color: [0.06,0.22,0.08], label: 'Taiga' },
-            { color: [0.35,0.32,0.22], label: 'Tundra' },
-            { color: [0.78,0.80,0.84], label: 'Ice' },
+            { color: [0.82,0.72,0.50], label: '沙漠' },
+            { color: [0.72,0.62,0.30], label: '草原' },
+            { color: [0.42,0.50,0.18], label: '稀树草原' },
+            { color: [0.12,0.38,0.10], label: '森林' },
+            { color: [0.06,0.22,0.08], label: '针叶林' },
+            { color: [0.35,0.32,0.22], label: '苔原' },
+            { color: [0.78,0.80,0.84], label: '冰原' },
         ];
         const biomeColors = biomeStops.map(s => `rgb(${Math.round(s.color[0]*255)},${Math.round(s.color[1]*255)},${Math.round(s.color[2]*255)})`);
         const biomePcts = biomeStops.map((_, i) => Math.round(i / (biomeStops.length - 1) * 100));
@@ -467,10 +467,10 @@ function updateLegend(layer) {
             `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
     } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
+            `<div class="legend-labels"><span>雨影</span><span>中性</span><span>迎风</span></div>`;
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
-            `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>海洋 / 海平面</span><span>峰顶</span></div>`;
     } else {
         vizLegend.innerHTML = '';
     }
@@ -539,7 +539,7 @@ const vMapCenterLon = document.getElementById('vMapCenterLon');
 
 sMapCenterLon.addEventListener('input', () => {
     const lon = +sMapCenterLon.value;
-    const suffix = lon > 0 ? 'E' : lon < 0 ? 'W' : '';
+    const suffix = lon > 0 ? '东' : lon < 0 ? '西' : '';
     vMapCenterLon.textContent = Math.abs(lon) + '\u00B0' + suffix;
     state.mapCenterLon = lon * Math.PI / 180;
     if (state.mapMode && state.mapMesh) {
@@ -574,7 +574,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         if (state.arrowGroup) state.arrowGroup.visible = false;
         if (!state.mapMesh) {
             showBuildOverlay();
-            onProgress(0, 'Building map mesh\u2026');
+            onProgress(0, '正在构建地图网格\u2026');
             setTimeout(() => {
                 buildMapMesh();
                 if (state.mapMesh) state.mapMesh.visible = true;
@@ -677,17 +677,17 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        onProgress(0, 'Preparing export...');
+        onProgress(0, '正在准备导出...');
         await exportMap(type, w, onProgress);
         hideBuildOverlay();
     });
 
     const exportAllBtn = document.getElementById('exportAllGo');
     const EXPORT_ALL_TYPES = [
-        { type: 'biome',         label: 'Satellite' },
-        { type: 'koppen',        label: 'Climate' },
-        { type: 'landheightmap', label: 'Heightmap' },
-        { type: 'landmask',      label: 'Land Mask' },
+        { type: 'biome',         label: '卫星图' },
+        { type: 'koppen',        label: '气候图' },
+        { type: 'landheightmap', label: '高度图' },
+        { type: 'landmask',      label: '陆地遮罩' },
     ];
 
     exportAllBtn.addEventListener('click', async () => {
@@ -695,7 +695,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         closeModal();
         showBuildOverlay();
         if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
+            onProgress(0, '正在计算气候...');
             await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
         }
         await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
@@ -716,7 +716,7 @@ if (isMobileLayout()) {
 sidebarToggle.addEventListener('click', () => {
     const collapsed = uiPanel.classList.toggle('collapsed');
     sidebarToggle.innerHTML = collapsed ? '\u00BB' : '\u00AB';
-    sidebarToggle.title = collapsed ? 'Show panel' : 'Collapse panel';
+    sidebarToggle.title = collapsed ? '显示面板' : '收起面板';
 });
 
 (function initBottomSheet() {
@@ -803,7 +803,7 @@ sidebarToggle.addEventListener('click', () => {
 
 if (state.isTouchDevice) {
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Import a heightmap to get started';
+    if (infoEl) infoEl.textContent = '导入高度图以开始';
 }
 
 // Disable export widths > 8192 on touch devices
@@ -813,7 +813,7 @@ if (state.isTouchDevice) {
         for (const opt of exportWidth.options) {
             if (+opt.value > 8192) {
                 opt.disabled = true;
-                opt.textContent = opt.value + ' (too large for mobile)';
+                opt.textContent = opt.value + '（移动端过大）';
             }
         }
     }
@@ -948,23 +948,23 @@ window.addEventListener('resize', () => {
         const heightKm = elev <= 0 ? (elev * 10).toFixed(1) : (6 * elev * elev).toFixed(1);
         const isOcean = elev <= 0;
 
-        let html = `<span class="hi-label">Elev</span> ${heightKm} km (${isOcean ? 'ocean' : 'land'})<br>`;
-        html += `<span class="hi-label">Coord</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
+        let html = `<span class="hi-label">高程</span> ${heightKm} km（${isOcean ? '海洋' : '陆地'}）<br>`;
+        html += `<span class="hi-label">坐标</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? '北' : '南'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? '东' : '西'}`;
 
         if (d.r_temperature_summer && d.r_precip_summer) {
             const ts = d.r_temperature_summer[r], tw = d.r_temperature_winter[r];
             const ps = d.r_precip_summer[r], pw = d.r_precip_winter[r];
             const tAvg = ((ts + tw) / 2).toFixed(1);
             const pTotal = Math.round(ps + pw);
-            html += `<br><span class="hi-label">Temp</span> ${tAvg}\u00b0C avg (${ts.toFixed(1)} summer, ${tw.toFixed(1)} winter)`;
-            html += `<br><span class="hi-label">Prec</span> ${pTotal} mm/yr`;
+            html += `<br><span class="hi-label">温度</span> ${tAvg}\u00b0C 平均（夏季 ${ts.toFixed(1)}，冬季 ${tw.toFixed(1)}）`;
+            html += `<br><span class="hi-label">降水</span> ${pTotal} mm/年`;
         }
 
         if (d.debugLayers?.koppen) {
             const kIdx = d.debugLayers.koppen[r];
             if (kIdx > 0 && kIdx < KOPPEN_CLASSES.length) {
                 const k = KOPPEN_CLASSES[kIdx];
-                html += `<br><span class="hi-label">Clim</span> ${k.code} \u2014 ${k.name}`;
+                html += `<br><span class="hi-label">气候</span> ${k.code} \u2014 ${k.name}`;
             }
         }
 

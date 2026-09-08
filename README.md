@@ -1,294 +1,296 @@
 # World Orogen
 
-A browser-based procedural planet generator that creates realistic terrestrial planets with tectonic plate simulation, elevation modeling, and interactive editing. Uses native ES modules with no build step required.
+一款浏览器端程序化星球生成器，可生成具有真实感的类地行星，包含构造板块模拟、高程建模和交互式编辑。项目使用原生 ES Modules，无需构建步骤。
 
-[![Live Site](https://img.shields.io/badge/Try_it-orogen.studio-brightgreen)](https://orogen.studio/) ![Three.js](https://img.shields.io/badge/Three.js-0.160.0-blue) ![No Build](https://img.shields.io/badge/build-none-green)
+[![在线体验](https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-orogen.studio-brightgreen)](https://orogen.studio/) ![Three.js](https://img.shields.io/badge/Three.js-0.160.0-blue) ![无需构建](https://img.shields.io/badge/%E6%9E%84%E5%BB%BA-%E6%97%A0-green)
 
-## Philosophy
+## 设计理念
 
-World Orogen is concept art for planets. It's built for the moment early in a project when you need a world that *looks* real — believable tectonics, organic coastlines, climate patterns that feel right — but you don't need a geophysical simulation to get there. The science isn't decoration: plate collision models inspired by real tectonics, pressure-driven wind patterns, and Köppen classification are what make the output feel convincing at a glance. If a climate scientist squints and finds inaccuracies, that's fine — but the scientific foundation is what earns the first glance. Plausibility, not precision.
+World Orogen 是面向星球的概念美术工具。它服务于项目早期的那个时刻：你需要一个看起来真实的世界，包括可信的构造板块、有机的海岸线、感觉合理的气候分布，但还不需要严格的地球物理仿真。科学不是装饰：受真实构造启发的板块碰撞模型、压力驱动的风场，以及柯本气候分类，正是让输出第一眼可信的原因。如果气候科学家仔细看能挑出不准确之处，这没有关系；科学基础的作用是赢得第一眼的可信度。目标是可信，而不是精确。
 
-The core value is creative velocity. Generate a planet in seconds, tweak plates and terrain until it matches your vision, then export high-resolution maps into whatever comes next — Gaea, Wonderdraft, Photoshop, a game engine, a novel outline. Orogen is designed to be the fastest path from a blank page to a world worth building on — the first tool in your worldbuilding pipeline, not the last.
+核心价值是创作速度。几秒内生成一颗星球，调整板块和地形直到符合你的设想，然后导出高分辨率地图，接入下一步工作流：Gaea、Wonderdraft、Photoshop、游戏引擎或小说大纲。Orogen 旨在成为从空白页到可继续创作世界的最快路径，是世界观工作流中的第一件工具，而不是最后一件。
 
-## Guiding Principles
+## 指导原则
 
-1. **Artistic appeal** — Visually interesting, scientifically informed output. Aesthetics come first.
-2. **Ease of use and efficiency** — Approachable interface, fast generation. Don't sacrifice usability for realism.
-3. **Scientific plausibility** — Grounded in real planetary science. Believable, not necessarily physically accurate.
+1. **艺术吸引力** — 输出要视觉有趣，并有科学依据。审美优先。
+2. **易用与效率** — 界面应易上手，生成应足够快。不要为了真实感牺牲可用性。
+3. **科学可信度** — 扎根真实行星科学。要让人相信，不必完全物理精确。
 
-All three are considered together; ties are broken in the order above.
+三者会一起权衡；取舍时按上面的顺序优先。
 
-## Features
+## 功能
 
-- **Fibonacci sphere meshing** with Voronoi cell tessellation via Delaunay triangulation
-- **Tectonic plate simulation** — farthest-point seed placement with top-3 jitter, round-robin flood fill with directional growth bias, growth-rate governor, compactness penalty to prevent spindly shapes, multi-pass boundary smoothing, and fragment reconnection
-- **Ocean/land assignment** — farthest-point continent seeding, round-robin growth with separation guarantees, trapped sea absorption, targeting ~30% land coverage
-- **Collision detection** — convergent, divergent, and transform boundary classification with density-based subduction modeling; dual-layer super plate system groups same-type plates into ~20 tectonic units for broad orogenic belts blended 50/50 with fine-grained individual plate orogeny
-- **Elevation generation** — three distance fields (mountain/ocean/coastline) combined via harmonic-mean formula, stress-driven uplift, asymmetric mountain profiles, continental shelf/slope/abyss profiles, foreland basins, plateau formation, and rift valleys with graben profiles
-- **Ocean floor features** — mid-ocean ridges at divergent boundaries, deep trenches at subduction zones, fracture zones at transform boundaries, back-arc basins behind subduction zones
-- **Island arcs** — volcanic island chains at ocean-ocean convergent boundaries with ridged noise shaping
-- **Hotspot volcanism** — dual-component mantle plume model (broad thermal swell + volcanic peak) with drift-trail island chains, domain-warped shape distortion, drift-direction elongation, summit calderas on active domes, radial rift-zone ridges, age-dependent volcanic texture, and per-hotspot variation in strength/decay/spacing
-- **Terrain post-processing** — noise-based domain warping (FBM simplex noise with greedy mesh walk) to deform the elevation field for organic coastlines and mountain ridges, independently controllable bilateral smoothing to blend harsh BFS distance-field boundaries, glacial erosion that carves fjords, U-shaped valleys, and lake basins at high latitudes and altitudes via latitude-driven ice flow with drainage accumulation, priority-flood pit resolution with canyon carving (Barnes et al. algorithm that ensures every land cell drains to the ocean, carving dramatic canyons through mountain saddle points rather than filling basins), iterative implicit stream power hydraulic erosion (Braun-Willett style) that carves self-reinforcing river valleys with automatic sediment deposition in flat receivers, thermal erosion that softens ridges via talus-angle material transport, ridge sharpening that accentuates mountain ridgelines, and always-on soil creep (Laplacian diffusion) that rounds off hillslopes
-- **Coastal roughening** — fractal noise with active/passive margin differentiation, domain warping for bays/headlands, and offshore island scattering
-- **3D globe rendering** with atmosphere rim shader, translucent water sphere, terrain displacement, and starfield
-- **Equirectangular map projection** with antimeridian wrapping
-- **Interactive editing** — Ctrl-click plates to mark them for reshaping (multi-select with visual tinting), then click Rebuild to apply all changes at once. Ctrl-click again to undo a pending selection. Press Escape to cancel all pending edits
-- **Seasonal wind simulation** — pressure-driven wind patterns with a longitude-varying ITCZ that tracks the thermal equator (~5° over ocean, up to 15-20° over continents), Gaussian pressure bands (subtropical highs, subpolar lows, polar highs), land/sea thermal contrast for monsoon-like pressure reversals, elevation barometric effects, and Coriolis-deflected geostrophic wind with natural cross-equatorial flow reversal. Computed for both summer and winter seasons.
-- **Ocean surface currents** — rule-based geographic gyre simulation driven by wind belts (trade winds, westerlies, polar easterlies) with a longitude-varying ITCZ equatorial countercurrent. Continental shelves are classified as western or eastern boundaries via coast-normal BFS, producing subtropical gyres (CW in NH, CCW in SH) with western boundary intensification (Gulf Stream, Kuroshio effect) and weaker eastern boundary return flow. Detects circumpolar channels for unobstructed eastward currents (Antarctic Circumpolar Current). Currents are colored by heat transport: red = warm poleward flow, blue = cold equatorward flow, black = zonal (neutral). Computed for both summer and winter seasons.
-- **Precipitation** — blended dual-model approach: a complex moisture advection simulation is blended with a fast heuristic zonal model (blend weight and all climate constants are tuned against real-Earth Köppen data; see `js/climate-config.js`). The advection model simulates wind-driven moisture transport from coasts with six mechanisms: ITCZ convective uplift, frontal convergence, orographic rain/shadow, lee cyclogenesis, polar-front precipitation, and subtropical high suppression. The heuristic model provides smooth latitude-based patterns (ITCZ wet belt, subtropical dry belt, mid-latitude recovery, polar dryness) modulated by continentality and orographic effects. Blending the two reduces splotchiness while preserving terrain-informed detail and strengthening subtropical desert formation (~20–35°). Visualized on a brown (dry) → green (moderate) → blue (wet) color ramp. Computed for both summer and winter seasons.
-- **Map type switcher** — first-class Terrain / Satellite / Climate / Heightmap tabs with color legends for each view
-- **On-demand climate** — optional deferred climate computation; skip climate during generation for faster terrain iteration, compute it on demand when needed
-- **Detailed visualization** — twenty-six selectable inspection layers organized by category (Geology, Atmosphere, Ocean, Climate, Elevation) for viewing each component in isolation. Wind/pressure layers show directional wind arrows, ocean current layers show current arrows colored by heat transport, on both globe and map views. Precipitation layers use a brown→green→blue ramp showing dry to wet regions.
-- **Heightmap import** — bring your own equirectangular B&W heightmap (Earth, Mars, hand-drawn maps) onto a 3D globe. Black pixels become ocean, brighter pixels become higher land. The import page (`/import`) runs full climate simulation (wind, precipitation, temperature, K&ouml;ppen) on your imported terrain, with optional terrain sculpting (smoothing, erosion, ridge sharpening). Supported formats: PNG, JPEG, WebP.
-- **Map export** — download high-resolution equirectangular PNGs (color terrain, satellite biome, climate/Köppen, B&W heightmap, land-only heightmap, or B&W land mask) at configurable widths up to 65536px with tiled rendering. **Export All** downloads Satellite, Climate, Heightmap, and Land Mask in one click, auto-computing climate if needed.
+- **斐波那契球面网格**，通过 Delaunay 三角剖分生成 Voronoi 单元镶嵌
+- **构造板块模拟**：最远点种子布置、Top-3 抖动、带方向生长偏置的轮转洪泛填充、生长速率调节器、防止细长形状的紧凑度惩罚、多轮边界平滑与碎片重连
+- **海洋/陆地分配**：最远点大陆播种、带分离保证的轮转生长、困海吸收，并以约 30% 陆地覆盖为目标
+- **碰撞检测**：收敛、离散和平移边界分类；基于密度的俯冲建模；双层超级板块系统将同类板块归并为约 20 个构造单元，用于生成宽阔造山带，并与细粒度单板块造山结果按 50/50 混合
+- **高程生成**：三种距离场（山脉/海洋/海岸线）经调和平均公式组合，叠加应力抬升、非对称山脉剖面、大陆架/大陆坡/深海剖面、前陆盆地、高原形成，以及具地堑剖面的裂谷
+- **洋底地貌**：离散边界处的洋中脊、俯冲带深海沟、转换边界断裂带，以及俯冲带后的弧后盆地
+- **岛弧**：洋-洋收敛边界处的火山岛链，使用脊状噪声塑形
+- **热点火山作用**：双组分地幔柱模型（宽缓热隆起 + 火山峰），包含漂移轨迹岛链、域扭曲形变、漂移方向拉伸、活动穹丘上的峰顶破火山口、径向裂谷脊、随年龄变化的火山纹理，以及每个热点独立的强度/衰减/间距差异
+- **地形后处理**：基于噪声的域扭曲（FBM simplex 噪声 + 贪婪网格步行）让高程场形成有机海岸线和山脊；可独立控制的双边平滑用于柔化粗糙 BFS 距离场边界；冰川侵蚀会在高纬和高海拔处雕刻峡湾、U 形谷与湖盆；优先洪泛洼地处理通过山口刻蚀峡谷，确保每个陆地单元都能排水入海；迭代隐式 stream power 水力侵蚀会刻出自强化河谷，并在平坦接收区自动沉积；热力侵蚀通过崖锥角物质搬运柔化山脊；山脊锐化强化山线；常开土壤蠕变通过拉普拉斯扩散圆润坡面
+- **海岸粗糙化**：使用分形噪声、主动/被动大陆边缘差异、海湾/岬角域扭曲和近海岛屿散布
+- **3D 球体渲染**，包含大气边缘 shader、半透明水球、地形位移与星空
+- **等距柱状地图投影**，支持反经线环绕
+- **交互式编辑**：Ctrl 点击板块，将其标记为待重塑；支持多选和视觉染色，然后点击重建一次性应用。再次 Ctrl 点击可取消待选板块，按 Escape 可取消全部待处理编辑
+- **季节性风场模拟**：压力驱动风场，ITCZ 随经度变化并追踪热赤道（海洋约 5°，大陆最高约 15-20°），包含高斯气压带（副热带高压、副极地低压、极地高压）、陆海热力差异形成的季风式气压反转、高程气压效应，以及受科里奥利力偏转的地转风和自然跨赤道流反转。夏季和冬季都会计算。
+- **海洋表层洋流**：基于规则的地理环流模拟，由风带（信风、西风、极地东风）和随经度变化的 ITCZ 赤道逆流驱动。大陆架通过海岸法线 BFS 分类为西边界或东边界，从而形成副热带环流（北半球顺时针、南半球逆时针）、西边界强化（类似湾流、黑潮）和较弱的东边界回流。可检测无阻挡向东流动的环极通道（类似南极绕极流）。洋流按热输送着色：红色为暖的向极流，蓝色为冷的向赤道流，黑色为纬向中性流。夏季和冬季都会计算。
+- **降水**：混合双模型方法，将复杂水汽平流模拟与快速纬向启发式模型混合（混合权重和气候常量根据真实地球柯本数据调参，见 `js/climate-config.js`）。平流模型模拟从海岸输入、受风驱动的水汽输送，并包含六种机制：ITCZ 对流抬升、锋面辐合、地形雨/雨影、背风面气旋生成、极锋降水、副热带高压抑制。启发式模型提供平滑的纬度型格局（ITCZ 湿润带、副热带干燥带、中纬度恢复、极地干燥），并受大陆性和地形效应调制。两者混合可减少斑块感，同时保留受地形影响的细节并加强副热带沙漠形成（约 20-35°）。可视化使用棕色（干）→绿色（中等）→蓝色（湿）色带。夏季和冬季都会计算。
+- **地图类型切换器**：一等入口的地形/卫星/气候/高度图标签页，每种视图都有颜色图例
+- **按需气候计算**：可选择延迟气候计算；生成阶段跳过气候以更快迭代地形，切换到依赖气候的视图时再按需计算
+- **详细可视化**：26 个可选检查图层，按类别组织（地质、大气、海洋、气候、高程），可单独查看每个组件。风/气压图层在球体和地图上显示风向箭头；洋流图层显示按热输送着色的洋流箭头；降水图层使用棕→绿→蓝色带展示干湿变化。
+- **高度图导入**：可将自己的等距柱状黑白高度图（地球、火星、手绘地图）导入到 3D 星球。黑色像素表示海洋，越亮表示陆地越高。导入页（`/import`）会在导入地形上运行完整气候模拟（风、降水、温度、柯本），并可选择地形雕刻（平滑、侵蚀、山脊锐化）。支持 PNG、JPEG、WebP。
+- **地图导出**：可下载高分辨率等距柱状 PNG，包括彩色地形、卫星生物群系、气候/柯本、黑白高度图、仅陆地高度图或黑白陆地遮罩；宽度最高可配置到 65536px，并使用分块渲染。**全部导出**会一键下载卫星图、气候图、高度图和陆地遮罩，并在需要时自动先计算气候。
 
-## Quick Start
+## 快速开始
 
-Serve the project with any local HTTP server (required for ES modules):
+用任意本地 HTTP 服务器提供项目文件（ES Modules 需要通过 HTTP 加载）：
 
 ```bash
 # Python
 python3 -m http.server 8000
 
-# Or Node.js
+# 或 Node.js
 npx serve .
 ```
 
-Then open **http://localhost:8000** in your browser. No dependencies to install, no build step.
+然后在浏览器打开 **http://localhost:8000**。无需安装依赖，也无需构建。
 
-Click **Build New World** to create a new random planet. The button changes color and label based on what you've adjusted:
-- **Build New World** (blue) — generates a fresh planet with a new random seed
-- **Rebuild** (amber) — re-renders the current planet at a new detail/roughness level without changing continent shapes
-- **Regenerate** (red) — creates new tectonic plates when the Plates or Continents slider has changed
+点击 **生成新世界** 创建随机星球。按钮会根据你调整的内容改变颜色和标签：
 
-### Navigation
+- **生成新世界**（蓝色）— 使用新的随机种子生成全新星球
+- **重建**（琥珀色）— 在不改变大陆形状的情况下，以新的细节/粗糙度重新渲染当前星球
+- **重新生成**（红色）— 当板块或大陆滑块变化时，重新创建构造板块
 
-A top navigation bar connects the two pages:
-- **Generate** (`/`) — procedural planet generation with tectonic plates, erosion, and climate
-- **Import** (`/import`) — import your own equirectangular B&W heightmap, view it on a 3D globe, and run climate simulation. Black (0) = ocean, brighter = higher elevation. Supports PNG, JPEG, and WebP.
+### 导航
 
-### Sharing Planets
+顶部导航栏连接两个页面：
 
-Every generated planet produces a **planet code** (shown below the Build button) that encodes the random seed, all slider values, and any plate edits. An unedited planet is 21 characters; plate edits (applied via Rebuild) extend the code to include the toggled plates. Older codes (13–18 characters) from previous versions are still supported — missing sliders default to their current default values. To share a planet:
+- **生成**（`/`）— 带构造板块、侵蚀和气候的程序化星球生成
+- **导入**（`/import`）— 导入自己的等距柱状黑白高度图，在 3D 球体上查看并运行气候模拟。黑色（0）= 海洋，更亮 = 更高海拔。支持 PNG、JPEG 和 WebP。
 
-- **Copy** the code with the copy button and send it to someone
-- **Load** a code by pasting it into the planet code field and clicking Load (or pressing Enter). The Load button turns blue when a new code is ready to apply.
-- **URL sharing** — the code is also stored in the URL hash (e.g. `#a7f3kq9xp2b`), so you can share the full URL directly. Opening a URL with a valid hash auto-loads that planet, including any plate edits.
+### 分享星球
 
-## Controls
+每颗生成的星球都会产生一个 **星球代码**（显示在生成按钮下方），其中编码了随机种子、所有滑块值和板块编辑。未编辑星球为 21 个字符；通过重建应用过的板块编辑会扩展代码，把切换过的板块包含进去。旧版本的 13-18 字符代码仍受支持，缺失滑块会使用当前默认值。分享星球的方法：
 
-### Shape Your World
+- 用复制按钮 **复制** 代码，然后发给别人
+- 将代码粘贴到星球代码输入框并点击 **加载**（或按 Enter）来 **加载** 代码。当有新代码可应用时，加载按钮会变蓝
+- **URL 分享**：代码也会存入 URL hash（例如 `#a7f3kq9xp2b`），因此可以直接分享完整 URL。打开带有效 hash 的 URL 会自动加载该星球，包括所有板块编辑
 
-Core world parameters that control the planet's structure (changing these requires a full rebuild):
+## 控制项
 
-| Control | Range | Default | Description |
-|---------|-------|---------|-------------|
-| Detail | 5,000 – 2,560,000 | 204,000 | Number of Voronoi cells on the sphere. Only affects rendering resolution — continent shapes are stable across detail levels (generated on a fixed ~20K reference grid) |
-| Irregularity | 0 – 1 | 0.75 | Randomization of Fibonacci point positions |
-| Plates | 4 – 120 | 80 | Number of tectonic plates |
-| Continents | 1 – 10 | 4 | Target number of separate landmasses |
-| Roughness | 0 – 0.5 | 0.40 | Fractal noise magnitude for terrain roughness |
-| Continent Size Variety | 0 – 1 | 0.35 | How much continent sizes vary — 0 keeps continents similar in size, 1 allows a mix of large and small landmasses |
-| Land Coverage | 0 – 1 | 0.3 | Percentage of the planet covered by land. Low values create ocean worlds, high values create desert worlds. Above 40% coverage, precipitation is progressively dampened to simulate reduced oceanic moisture |
+### 塑造世界
 
-### Terrain Sculpting
+控制星球结构的核心参数（修改这些参数需要完整重建）：
 
-Post-processing passes that refine the terrain (collapsed by default — the defaults produce good results). These do not require a full rebuild; adjusting any slider lights up the **Reapply** button at the bottom of this section — click it to reapply only the sculpting passes on the current planet.
+| 控制项 | 范围 | 默认值 | 说明 |
+|---|---|---|---|
+| 细节 | 5,000 - 2,560,000 | 204,000 | 球面上的 Voronoi 单元数量。只影响渲染分辨率；大陆形状在不同细节级别下保持稳定（基于固定的约 20K 参考网格生成） |
+| 不规则度 | 0 - 1 | 0.75 | 斐波那契点位的随机化程度 |
+| 板块 | 4 - 120 | 80 | 构造板块数量 |
+| 大陆 | 1 - 10 | 4 | 目标分离陆块数量 |
+| 粗糙度 | 0 - 0.5 | 0.40 | 地形粗糙度的分形噪声幅度 |
+| 大陆尺寸差异 | 0 - 1 | 0.35 | 大陆尺寸变化程度；0 让大陆大小接近，1 允许大、小陆块混合 |
+| 陆地覆盖 | 0 - 1 | 0.3 | 星球被陆地覆盖的比例。低值生成海洋世界，高值生成沙漠世界。覆盖率高于 40% 后，降水会逐步削弱，以模拟海洋水汽减少 |
 
-| Control | Range | Default | Description |
-|---------|-------|---------|-------------|
-| Terrain Warp | 0 – 1 | 0.75 | Domain warping — deforms the elevation field using noise to produce organic, squiggly coastlines and mountain ridges |
-| Smoothing | 0 – 1 | 0.10 | Blends harsh terrain boundaries from tectonic generation |
-| Glacial Erosion | 0 – 1 | 0.50 | Ice-age sculpting — carves fjords, U-shaped valleys, and lake basins at high latitudes and altitudes via latitude-driven ice flow |
-| Hydraulic Erosion | 0 – 1 | 0.50 | Iterative stream-power erosion — resolves endorheic basins via priority-flood canyon carving, then carves river valleys and dendritic drainage networks, with automatic sediment deposition in flat receivers |
-| Thermal Erosion | 0 – 1 | 0.10 | Slope-driven material transport — softens ridges and creates natural talus slopes |
-| Ridge Sharpening | 0 – 1 | 0.50 | Accentuates mountain ridgelines — pushes peaks further above their surroundings for more dramatic terrain |
+### 地形雕刻
 
-### Climate
+用于细化地形的后处理流程（默认折叠；默认值已经能得到较好结果）。这些控制项不需要完整重建；调整任一滑块后，本节底部的 **重新应用** 按钮会亮起，点击即可只在当前星球上重新应用雕刻流程。
 
-Global climate offsets that adjust temperature and precipitation without a full rebuild. Changing these triggers a fast climate-only recompute.
+| 控制项 | 范围 | 默认值 | 说明 |
+|---|---|---|---|
+| 地形扭曲 | 0 - 1 | 0.75 | 域扭曲，用噪声变形高程场，生成有机弯曲的海岸线和山脊 |
+| 平滑 | 0 - 1 | 0.10 | 混合构造生成中的生硬地形边界 |
+| 冰川侵蚀 | 0 - 1 | 0.50 | 冰期雕刻；在高纬和高海拔通过纬度驱动的冰流刻出峡湾、U 形谷和湖盆 |
+| 水力侵蚀 | 0 - 1 | 0.50 | 迭代 stream-power 侵蚀；通过优先洪泛峡谷刻蚀解决内流盆地，再刻出河谷和树枝状水系，并在平坦接收区自动沉积 |
+| 热力侵蚀 | 0 - 1 | 0.10 | 坡度驱动物质搬运；柔化山脊并生成自然崖锥坡 |
+| 山脊锐化 | 0 - 1 | 0.50 | 强化山脊线；将峰顶进一步推高，使地形更有戏剧性 |
 
-| Control | Range | Default | Description |
-|---------|-------|---------|-------------|
-| Temperature | -15 – 15 | 0 | Global temperature offset in °C — positive makes the planet warmer, negative colder. Climate zones shift accordingly |
-| Precipitation | -1 – 1 | 0 | Global precipitation scale — positive makes the planet wetter, negative drier. Affects desert and rainforest distribution |
+### 气候
 
-### Auto Climate
+无需完整重建即可调节的全球气候偏移。改变这些项会触发快速的仅气候重算。
 
-Climate simulation (wind, ocean currents, precipitation, temperature, Köppen classification) runs automatically during generation when detail is ≤ 300K regions. Above 300K, climate is skipped for faster terrain iteration and computed on demand when switching to a climate-dependent view.
+| 控制项 | 范围 | 默认值 | 说明 |
+|---|---|---|---|
+| 温度 | -15 - 15 | 0 | 全局温度偏移（°C）；正值让星球更暖，负值更冷，气候带会相应移动 |
+| 降水 | -1 - 1 | 0 | 全局降水缩放；正值让星球更湿，负值更干，影响沙漠和雨林分布 |
 
-### Visual Options
+### 自动气候
 
-- **Map Type** — segmented Terrain / Satellite / Climate / Heightmap tabs for quick switching between the four most common visualizations. Each tab shows a color legend:
-  - **Terrain** — elevation color ramp from deep ocean through sea level to mountain peaks
-  - **Satellite** — realistic biome colors based on Köppen climate classification and elevation (lush green rainforests, tan deserts, white ice caps, dark taiga, gray tundra), with ocean using the standard terrain palette. High elevations blend toward snow white based on climate-aware snow lines.
-  - **Climate** — Köppen-Geiger classification with color swatches for all 30 climate types
-  - **Heightmap** — black-to-white gradient on a fixed absolute scale (-5 km ocean floor to 6 km peaks), so the same physical height always maps to the same shade
-- **View** dropdown — switch between Globe and Map (equirectangular projection)
-- **Center Longitude** slider (map mode only) — shifts the map projection's central meridian to any longitude from 180°W to 180°E, scrolling the equirectangular projection so the chosen longitude is centered. Exports are unaffected (always centered on 0°).
-- **Wireframe** — toggle switch to show Voronoi cell edges as a wireframe overlay
-- **Show Plates** — toggle switch to color regions by plate (green shades = land, blue shades = ocean); also draws black super plate boundary lines showing tectonic super-groups
-- **Auto-Rotate** — toggle switch to spin the globe continuously
-- **Grid Lines** — toggle switch for latitude/longitude grid overlay on both globe and map views
-- **Grid Spacing** — choose the interval between grid lines: 30°, 15°, 10°, 5°, or 2.5°
+当细节不超过 300K 区域时，生成阶段会自动运行气候模拟（风、洋流、降水、温度、柯本分类）。高于 300K 时，为了更快迭代地形，气候会先跳过，并在切换到依赖气候的视图时按需计算。
 
-### Inspect Dropdown
+### 视觉选项
 
-The **Inspect** dropdown (in Visual Options, below the map tabs) selects a detailed visualization layer. Options are organized into groups:
+- **地图类型**：分段式地形/卫星/气候/高度图标签，可快速切换四种常用可视化。每个标签都有颜色图例：
+  - **地形**：从深海、海平面到山峰的高程色带
+  - **卫星**：基于柯本气候分类和高程的真实感生物群系色彩（郁绿雨林、棕黄沙漠、白色冰盖、深色针叶林、灰色苔原），海洋使用标准地形调色板。高海拔会根据气候感知雪线向雪白色混合。
+  - **气候**：显示全部 30 种柯本-盖格气候类型的颜色色块
+  - **高度图**：固定绝对范围的黑到白渐变（-5 km 洋底到 6 km 山峰），同一物理高度始终映射到同一灰度
+- **视图** 下拉框：在球体和地图（等距柱状投影）之间切换
+- **中心经度** 滑块（仅地图模式）：将地图投影中心经线移动到 180°西到 180°东之间的任意经度，使所选经度位于等距柱状图中央。导出不受影响（始终以 0° 为中心）。
+- **线框**：显示 Voronoi 单元边缘的线框叠层
+- **显示板块**：按板块为区域着色（绿色系 = 陆地，蓝色系 = 海洋），并绘制黑色超级板块边界线
+- **自动旋转**：让球体持续旋转
+- **经纬网**：在球体和地图视图上显示经纬网叠层
+- **网格间距**：选择经纬线间隔：30°、15°、10°、5° 或 2.5°
 
-- **Main views** (ungrouped at top) — Terrain, Satellite, Köppen Climate, Land Heightmap
-- **Geology** — Base, Tectonic, Noise, Interior, Coastal, Ocean Floor, Hotspot, Tectonic Activity, Margins, Back-Arc, Fold Ridge, Orogenic Power, Erosion Delta (blue = eroded, red = deposited)
-- **Atmosphere** — Pressure Summer/Winter (blue = low, red = high), Wind Speed Summer/Winter (with directional arrows on both globe and map)
-- **Ocean** — Currents Summer/Winter (red = warm poleward, blue = cold equatorward, black = zonal; with directional current arrows)
-- **Climate** — Precipitation Summer/Winter (brown = dry, green = moderate, blue = wet), Rain Shadow Summer/Winter (diverging blue = windward orographic boost, gray = neutral, red-brown = leeward rain shadow; leeward effects are seeded at downslope faces scaled by mountain height, then propagated ~1500 km downwind to show extended shadow zones like the foehn drying effect), Temperature Summer/Winter (purple-blue = cold, white = 0 C, green-yellow = warm, red = hot; fixed -45 to +45 C range), Continentality (blue = ocean, green = coast, yellow = moderate interior, orange/red = deep continental interior)
-- **Elevation** — Full Heightmap (full-range B&W)
+### 检查下拉框
 
-### Export
+**检查** 下拉框（位于视觉选项内，地图标签下方）可选择详细可视化图层。选项按组分类：
 
-Click **Export Map** (below Visual Options) to open the export modal:
+- **主视图**（顶部未分组）：地形、卫星、柯本气候、陆地高度图
+- **地质**：基础、构造、噪声、内陆、海岸、洋底、热点、构造活动、边缘、弧后、褶皱脊、造山强度、侵蚀变化（蓝色 = 被侵蚀，红色 = 沉积）
+- **大气**：夏/冬气压（蓝色 = 低压，红色 = 高压）、夏/冬风速（球体和地图上都显示方向箭头）
+- **海洋**：夏/冬洋流（红色 = 暖的向极流，蓝色 = 冷的向赤道流，黑色 = 纬向中性流，并显示洋流箭头）
+- **气候**：夏/冬降水（棕色 = 干，绿色 = 中等，蓝色 = 湿）、夏/冬雨影（发散色带：蓝色 = 迎风地形增雨，灰色 = 中性，红棕色 = 背风雨影；背风效应从按山体高度缩放的下坡面播种，并沿下风向传播约 1500 km，用来展示类似焚风干燥效应的延伸阴影区）、夏/冬温度（紫蓝 = 冷，白色 = 0°C，黄绿 = 暖，红色 = 热；固定 -45 到 +45°C 范围）、大陆性（蓝色 = 海洋，绿色 = 海岸，黄色 = 中等内陆，橙/红 = 深内陆）
+- **高程**：完整高度图（全范围黑白）
 
-- **Type** — Color Map (terrain colors), Satellite (biome colors from Köppen classification), Climate (Köppen classification colors), Heightmap (B&W full range on fixed -5 to 6 km absolute scale), Land Heightmap (B&W on fixed 0 to 6 km absolute scale, ocean is black), or Land Mask (pure B&W — white = land, black = ocean). Satellite and Climate options are disabled when climate hasn't been computed.
-- **Width** slider — 1024 to 65536 pixels (height is always width/2 for equirectangular). Large exports use tiled rendering to handle GPU texture limits.
-- **Export** — downloads the selected type as an equirectangular PNG with no grid overlay
-- **Export All** — downloads four maps (Satellite, Climate, Land Heightmap, Land Mask) sequentially. If climate hasn't been computed yet, it runs automatically before exporting.
-- A progress overlay shows rendering and PNG encoding status during export
+### 导出
 
-### Sidebar & Loading
+点击视觉选项下方的 **导出地图** 打开导出弹窗：
 
-The control panel can be collapsed and expanded with the **«** toggle button in the sidebar header. On small screens (≤ 768px) the sidebar becomes a bottom sheet with a drag handle — starts collapsed, showing only the handle and header. Drag up or tap the handle to expand. A fullscreen overlay with spinner, title, and progress bar appears during every generation — fully opaque on initial load, semi-transparent on subsequent builds so the previous planet is dimmed behind it. Stage labels (shaping, plates, oceans, mountains, painting) update as the pipeline progresses.
+- **类型**：彩色地图（地形色）、卫星图（来自柯本分类的生物群系色）、气候图（柯本分类颜色）、高度图（固定 -5 到 6 km 绝对范围的黑白图）、陆地高度图（固定 0 到 6 km 绝对范围的黑白图，海洋为黑色）或陆地遮罩（纯黑白：白色 = 陆地，黑色 = 海洋）。尚未计算气候时，卫星图和气候图选项会禁用。
+- **宽度** 滑块：1024 到 65536 像素（等距柱状图高度始终为宽度的一半）。大尺寸导出会使用分块渲染以绕过 GPU 纹理限制。
+- **导出**：下载所选类型的无经纬网等距柱状 PNG
+- **全部导出**：依次下载四张地图（卫星图、气候图、陆地高度图、陆地遮罩）。如果尚未计算气候，会在导出前自动运行。
+- 导出过程中会显示进度遮罩，展示渲染和 PNG 编码状态
 
-### Tutorial & Help
+### 侧边栏与加载
 
-A five-step tutorial modal introduces the tool on first visit (auto-shown via `localStorage`). It covers planet generation, slider controls, interactive editing, visualization, saving/sharing via planet codes, and map export. A **?** help button in the top-right corner reopens the tutorial at any time. The modal can be dismissed with the close button, backdrop click, Escape key, or the "Get Started" button on the final step.
+控制面板可通过侧边栏标题中的 **«** 按钮折叠和展开。小屏幕（≤ 768px）上，侧边栏会变成带拖拽把手的底部面板，初始为折叠状态，只显示把手和标题。向上拖动或点击把手即可展开。每次生成期间都会显示带加载指示器、标题和进度条的全屏遮罩；首次加载时完全不透明，后续构建时半透明，让上一颗星球在背后变暗。阶段标签（塑造、板块、海洋、山脉、绘制）会随流程推进而更新。
 
-A **What's New** modal is shown once per release to returning users (those who have already dismissed the tutorial). It highlights new features, changes, and a heads-up that saved planet codes may produce different-looking worlds due to terrain/climate reworks. The modal uses a versioned `localStorage` flag (`wo-whatsnew-seen`) — bump the `VERSION` constant in `initWhatsNew()` to trigger it again on the next release.
+### 教程与帮助
 
-### Interaction
+五步教程弹窗会在首次访问时自动出现（通过 `localStorage` 控制），介绍星球生成、滑块控制、交互式编辑、可视化、通过星球代码保存/分享，以及地图导出。右上角 **?** 帮助按钮可随时重新打开教程。可通过关闭按钮、点击背景、Escape 键，或最后一步的“开始使用”按钮关闭弹窗。
 
-Navigation hints are shown in the sidebar panel and as a contextual tooltip when hovering the planet.
+**更新内容** 弹窗会在每个版本对回访用户显示一次（已关闭过教程的用户）。它展示新功能、改动，并提示由于地形/气候重做，已保存的星球代码可能生成外观不同的世界。弹窗使用带版本的 `localStorage` 标记（`wo-whatsnew-seen`）；提升 `initWhatsNew()` 中的 `VERSION` 常量即可在下个版本再次触发。
 
-| Action | Desktop | Mobile |
-|--------|---------|--------|
-| Rotate globe / pan map | Drag | Drag (one finger) |
-| Zoom | Scroll wheel | Pinch with two fingers |
-| Highlight plate + info card | Hover | — |
-| Mark plate for reshaping | Ctrl-click a plate (multi-select) | Tap the edit button (pencil), then tap plates |
-| Undo pending plate | Ctrl-click the same plate again | Tap the same plate again |
-| Apply pending edits | Click the Rebuild button | Tap the Rebuild button |
-| Cancel all pending edits | Press Escape | — |
+### 交互
 
-Hovering over a region shows an info card with plate type, elevation, coordinates, and (when climate has been computed) temperature, precipitation, and K&ouml;ppen classification. Pending plates show a colored tint (green = ocean→land, blue = land→ocean) and hover text indicates "(pending)".
+导航提示会显示在侧边栏面板中，也会在悬停星球时作为上下文提示出现。
 
-### Mobile Support
+| 操作 | 桌面端 | 移动端 |
+|---|---|---|
+| 旋转球体 / 平移地图 | 拖拽 | 单指拖拽 |
+| 缩放 | 鼠标滚轮 | 双指捏合 |
+| 高亮板块 + 信息卡 | 悬停 | — |
+| 标记板块待重塑 | Ctrl 点击板块（可多选） | 点击编辑按钮（铅笔），再点击板块 |
+| 撤销待处理板块 | 再次 Ctrl 点击同一板块 | 再次点击同一板块 |
+| 应用待处理编辑 | 点击重建按钮 | 点击重建按钮 |
+| 取消全部待处理编辑 | 按 Escape | — |
 
-World Orogen is fully usable on phones and tablets:
+悬停区域会显示信息卡，包括板块类型、高程、坐标，以及在气候已计算时显示温度、降水和柯本分类。待处理板块会显示彩色染色（绿色 = 海洋→陆地，蓝色 = 陆地→海洋），悬停文本会提示“待应用”。
 
-- **Bottom-sheet sidebar** — on screens 768px or narrower, the sidebar becomes a bottom sheet with a drag handle. Drag or tap the handle to expand/collapse. The globe stays visible above.
-- **Pinch-to-zoom** — two-finger pinch zooms the globe and map, using the same smooth lerp as desktop scroll-zoom.
-- **View switcher** — a dropdown in the top-right lets you switch between Terrain, Satellite, Climate, and Heightmap views without opening the bottom sheet.
-- **Edit-mode toggle** — a floating pencil button (bottom-right) activates plate editing. Tap it to toggle edit mode (glows green when active), then tap plates to mark them. Tap the Rebuild button to apply all changes at once.
-- **Touch-friendly targets** — buttons, checkboxes, and sliders are enlarged for comfortable finger input.
-- **Performance** — detail warning thresholds are lowered on touch devices (orange at 200K, red at 500K). Export widths above 8192px are disabled on mobile.
-- **Tooltips** reposition above their trigger instead of to the right, so they stay on screen.
-- **Orientation** changes are handled automatically.
+### 移动端支持
 
-## How It Works
+World Orogen 可在手机和平板上完整使用：
 
-### Pipeline
+- **底部面板侧边栏**：768px 或更窄屏幕上，侧边栏会变成带拖拽把手的底部面板。拖拽或点击把手可展开/收起，球体仍显示在上方。
+- **双指缩放**：双指捏合可缩放球体和地图，使用与桌面滚轮缩放相同的平滑插值。
+- **视图切换器**：右上角下拉框可在不打开底部面板的情况下，在地形、卫星、气候和高度图视图之间切换。
+- **编辑模式开关**：右下角浮动铅笔按钮可激活板块编辑。点击它切换编辑模式（激活时绿色发光），再点击板块进行标记。点击重建按钮可一次性应用全部更改。
+- **触控友好目标**：按钮、复选框和滑块都放大到适合手指操作。
+- **性能**：触控设备上的细节警告阈值更低（200K 橙色、500K 红色）。移动端禁用高于 8192px 的导出宽度。
+- **工具提示** 会显示在触发器上方而非右侧，避免跑出屏幕。
+- **方向变化** 会自动处理。
 
-1. **Fibonacci spiral** distributes N points evenly on a unit sphere with optional jitter
-2. **Stereographic projection** maps the sphere points to 2D
-3. **Delaunator** computes Delaunay triangulation in projected space
-4. **Pole closure** connects convex hull edges to a pole point, creating a watertight mesh
-5. **Coarse plate generation** on a fixed ~20,000-region reference mesh (resolution-independent), via farthest-point seed placement (with top-3 jitter for variety), round-robin flood fill with per-plate growth rates, directional bias coupled inversely to growth rate, growth-rate governor, and compactness penalty
-6. **Ocean/land assignment** on the coarse mesh using farthest-point continent seeding with area budgeting
-7. **Plate projection** maps coarse plate assignments onto the high-res mesh via nearest-neighbor adjacency walk, then smooths boundaries with resolution-scaled majority-vote passes
-8. **Collision detection** simulates plate drift to classify convergent/divergent/transform boundaries
-9. **Stress propagation** diffuses collision stress inward through continental plates via frontier BFS
-10. **Elevation assignment** combines distance fields, stress-driven uplift, ocean floor profiles, rift valleys, back-arc basins, hotspot volcanism, island arcs, coastal roughening, and multi-layered noise
-11. **Terrain post-processing** applies domain warping (controlled by Terrain Warp slider) using FBM simplex noise to deform the elevation field for organic coastlines and mountain ridges via greedy mesh walk, then bilateral smoothing (controlled by Smoothing slider) to blend BFS banding artefacts, two always-on detail-noise passes add domain-warped high-octave FBM relief to land cells (in physical km space, with Newton-Raphson inversion of the elev→km quartic) to break up flat continental interiors before erosion routes drainage through them — Layer 1 adds 0–100 m positive bumps for broad rolling variety, then Layer 2 adds ±50 m bipolar bumps at 2× frequency and 2× warp amplitude with magnitude biased toward the extremes for sharper finer-scale relief; both layers are dampened by 50 % at full craton/basin weight so geologically quiet regions stay characteristically subdued, and both are scaled by the orogenic-power field so noise relief tracks active mountain-building zones and quiets down over tectonically inactive crust, glacial erosion (controlled by Glacial Erosion slider) carves fjords, U-shaped valleys, and lake basins at high latitudes and altitudes, priority-flood pit resolution carves canyons through mountain saddle points to ensure all land drains to the ocean, iterative implicit stream power hydraulic erosion with sediment deposition (controlled by Hydraulic Erosion slider) carves self-reinforcing river valleys, thermal erosion (controlled by Thermal Erosion slider) softens ridges via talus-angle material transport, ridge sharpening (controlled by Ridge Sharpening slider) accentuates mountain ridgelines, and always-on soil creep gently rounds off hillslopes
-12. **Wind simulation** computes a longitude-varying ITCZ by scanning for the thermal maximum at each longitude (accounting for land/sea heating differential and elevation lapse rate), builds pressure fields from Gaussian zonal bands centered on the ITCZ plus land/sea thermal modifiers and elevation barometric effects, then derives wind vectors from pressure gradients with latitude-dependent Coriolis deflection and surface friction. Computed for both NH summer and winter.
-13. **Ocean currents** uses a rule-based geographic approach: classifies ocean cells by wind belt (trades, westerlies, polar easterlies) to set base zonal flow, runs three BFS passes from coastal seeds to compute distance to western and eastern coastlines (classified by coast-normal direction), deflects currents poleward near western boundaries (warm, intensified ×2) and equatorward near eastern boundaries (cold, weaker ×0.8), detects circumpolar channels at ±60° latitude for unobstructed eastward flow, smooths with 5 Laplacian passes, and classifies heat transport by meridional flow direction. Computed for both seasons.
-14. **Precipitation** uses a blended dual-model approach. The complex model computes moisture advection from coasts using iterative upwind propagation driven by wind vectors, with depletion based on distance and elevation gain, plus six mechanisms: ITCZ convective uplift, frontal convergence at subpolar lows, orographic rain/rain shadow, lee cyclogenesis, polar front diffuse precipitation, and seasonal subtropical high suppression (shifts poleward in local summer to create Mediterranean dry-summer patterns). A heuristic zonal model computes smooth precipitation from ITCZ distance (with aggressive subtropical drying at 15–30°), seasonal hemisphere boost with Mediterranean subtropical suppression (up to 55% summer reduction at 25-42° latitude), continental dryness, and orographic rain shadow. The two models are blended (weight in `js/climate-config.js`, tuned against real-Earth Köppen zones) then normalized via 95th-percentile scaling. Computed for both seasons.
-15. **Temperature** computes per-cell surface temperature using the ITCZ as the thermal equator (~28°C peak, warmest latitude band), with poleward cooling following a power-law curve with a tropical plateau. Modulated by a zone×latitude seasonal swing table with a slight winter-heavy asymmetry, moisture-dependent elevation lapse rate (moist to dry adiabatic, interpolated by precipitation), ocean current warmth diffused onto coastal land, and precipitation/cloud cover moderation. All constants live in `js/climate-config.js` and are auto-tuned against real-Earth Köppen zones (see `tuning/climate/`). Normalized to a fixed -45 to +45 C range. Computed for both seasons.
-16. **Rendering** builds a Voronoi cell mesh with per-vertex colors and terrain displacement
+## 工作原理
 
-### Key Algorithms
+### 流程
 
-- **Seeded PRNG** — Park-Miller LCG for deterministic generation
-- **3D Simplex noise** — with fBm and ridged fBm variants for terrain detail
-- **Harmonic-mean distance blending** — `(1/a - 1/b) / (1/a + 1/b + 1/c)` for smooth elevation transitions
-- **Domain warping** — noise-driven coordinate offsets for organic coastlines
-- **Density-based subduction** — tanh mapping of density differences with undulation noise
-- **BFS distance fields** — randomized frontier expansion from boundary seeds, used for elevation, coast distance, rift width, ridge profiles, and back-arc basins
-- **Gaussian dome uplift** — hotspot volcanism modeled as dual-component Gaussians (thermal swell + volcanic peak) with domain-warped shape distortion, anisotropic drift elongation, summit calderas, radial rift ridges, and age-dependent texture blending
+1. **斐波那契螺旋** 将 N 个点均匀分布在单位球面上，并可加入抖动
+2. **球极平面投影** 将球面点映射到二维
+3. **Delaunator** 在投影平面中计算 Delaunay 三角剖分
+4. **极点闭合** 将凸包边连接到极点，创建水密网格
+5. **粗板块生成** 在固定约 20,000 区域的参考网格上运行（与最终分辨率无关）：最远点种子布置（Top-3 抖动增加变化）、带每板块生长速率的轮转洪泛填充、与生长速率反向耦合的方向偏置、生长速率调节器和紧凑度惩罚
+6. **海洋/陆地分配** 在粗网格上使用最远点大陆播种和面积预算
+7. **板块投影** 通过最近邻邻接步行，将粗板块分配映射到高分辨率网格，再用按分辨率缩放的多数投票轮次平滑边界
+8. **碰撞检测** 模拟板块漂移，分类收敛/离散/转换边界
+9. **应力传播** 通过前沿 BFS 将碰撞应力向大陆板块内部扩散
+10. **高程分配** 结合距离场、应力抬升、洋底剖面、裂谷、弧后盆地、热点火山、岛弧、海岸粗糙化和多层噪声
+11. **地形后处理** 应用域扭曲（由地形扭曲滑块控制），用 FBM simplex 噪声经贪婪网格步行变形高程场，生成有机海岸线和山脊；随后进行双边平滑（由平滑滑块控制）以柔化 BFS 条带伪影；两个常开细节噪声通道在陆地单元上添加经过域扭曲的高八度 FBM 起伏（物理 km 空间，使用 Newton-Raphson 反解 elev→km 四次式），在侵蚀把排水路径穿过大陆内部之前打破平坦感。第一层添加 0-100 m 正向起伏，形成宽缓滚动变化；第二层以 2 倍频率和 2 倍扭曲幅度添加 ±50 m 双极起伏，并让幅度更偏向极值，以得到更锐利细节；两层在完整克拉通/盆地权重下都会削弱 50%，使地质安静区保持较平缓；两层还会按造山强度场缩放，使噪声起伏追踪活跃造山区并在构造安静地壳上减弱。随后，冰川侵蚀（由冰川侵蚀滑块控制）刻出峡湾、U 形谷和湖盆；优先洪泛洼地处理通过山口刻蚀峡谷确保陆地都能排水入海；迭代隐式 stream power 水力侵蚀（由水力侵蚀滑块控制）刻出自强化河谷；热力侵蚀（由热力侵蚀滑块控制）通过崖锥角物质搬运柔化山脊；山脊锐化（由山脊锐化滑块控制）强化山线；常开土壤蠕变轻柔圆润坡面
+12. **风场模拟** 按经度扫描热量最大值来计算随经度变化的 ITCZ（考虑陆海加热差异和高程递减率），再基于以 ITCZ 为中心的高斯纬向气压带、陆海热力修饰和高程气压效应建立气压场，最后由气压梯度推导风矢量，并加入随纬度变化的科里奥利偏转和地表摩擦。北半球夏季和冬季都会计算。
+13. **洋流** 使用基于规则的地理方法：按风带（信风、西风、极地东风）分类海洋单元以设置基础纬向流；从海岸种子运行三轮 BFS 计算到西海岸和东海岸的距离（由海岸法线方向分类）；在西边界附近将洋流偏向极地方向（暖、强化 ×2），在东边界附近偏向赤道方向（冷、较弱 ×0.8）；检测 ±60° 纬度上的环极通道以形成无阻挡向东流；执行 5 轮拉普拉斯平滑；按经向流向分类热输送。两个季节都会计算。
+14. **降水** 使用混合双模型方法。复杂模型基于风矢量迭代上风向传播，计算从海岸输入的水汽平流，并根据距离和高程增益进行耗散；同时包含六种机制：ITCZ 对流抬升、副极地低压锋面辐合、地形雨/雨影、背风气旋生成、极锋弥散降水，以及季节性副热带高压抑制（本地夏季向极地方向移动，形成地中海式干夏格局）。启发式纬向模型根据到 ITCZ 的距离计算平滑降水（15-30° 强副热带干燥），再加入季节半球增强、地中海式副热带抑制（25-42° 纬度夏季最高降低 55%）、大陆干燥和地形雨影。两种模型混合（权重在 `js/climate-config.js` 中，并按真实地球柯本带调参），再通过第 95 百分位缩放归一化。两个季节都会计算。
+15. **温度** 以 ITCZ 作为热赤道（约 28°C 峰值，最暖纬带）计算每个单元的地表温度，并通过带热带平台的幂律曲线向极地方向降温。随后按气候区×纬度季节振幅表调制，并带有轻微冬季偏重的不对称；高程递减率会按湿润度在湿绝热到干绝热之间插值；洋流热量会扩散到海岸陆地；降水/云量也会进行调节。所有常量位于 `js/climate-config.js`，并通过真实地球柯本带自动调优（见 `tuning/climate/`）。归一化到固定 -45 到 +45°C 范围。两个季节都会计算。
+16. **渲染** 构建带逐顶点颜色和地形位移的 Voronoi 单元网格
 
-## Project Structure
+### 关键算法
 
-```
-index.html              Main page — HTML markup + import map + structured data
-import.html             Import page — heightmap upload + climate visualization
-styles.css              All CSS (shared by both pages)
-robots.txt              Search engine crawler directives
-sitemap.xml             Sitemap for search engine indexing
-site.webmanifest        Web app manifest (metadata + theming)
-llms.txt                AI/LLM-readable site description (AISEO)
-humans.txt              Project credits
-CNAME                   Custom domain config (orogen.studio)
-404.html                Custom 404 page
-preview.png             Social preview image (og:image / Twitter card)
+- **带种子的 PRNG**：Park-Miller LCG，保证确定性生成
+- **3D Simplex 噪声**：包含 fBm 与 ridged fBm 变体，用于地形细节
+- **调和平均距离混合**：`(1/a - 1/b) / (1/a + 1/b + 1/c)`，用于平滑高程过渡
+- **域扭曲**：噪声驱动坐标偏移，形成有机海岸线
+- **基于密度的俯冲**：使用 tanh 映射密度差，并加入起伏噪声
+- **BFS 距离场**：从边界种子随机前沿扩展，用于高程、海岸距离、裂谷宽度、山脊剖面和弧后盆地
+- **高斯穹丘抬升**：热点火山作用建模为双组分高斯（热隆起 + 火山峰），包含域扭曲形变、各向异性漂移拉伸、峰顶破火山口、径向裂谷脊和随年龄变化的纹理混合
+
+## 项目结构
+
+```text
+index.html              主页面：HTML 标记 + import map + 结构化数据
+import.html             导入页面：高度图上传 + 气候可视化
+styles.css              全部 CSS（两页共享）
+robots.txt              搜索引擎爬虫指令
+sitemap.xml             搜索引擎站点地图
+site.webmanifest        Web 应用清单（元数据 + 主题）
+llms.txt                面向 AI/LLM 的站点说明（AISEO）
+humans.txt              项目致谢
+CNAME                   自定义域名配置（orogen.studio）
+404.html                自定义 404 页面
+preview.png             社交预览图（og:image / Twitter card）
 js/
-  main.js               Generator entry point — UI wiring, animation loop
-  import-main.js        Import page entry point — file upload, import dispatch
-  state.js              Shared mutable application state
-  generate.js           Worker dispatcher — posts jobs, handles results
-  planet-worker.js      Web Worker — runs geology pipeline off main thread
-  planet-code.js        Planet code encode/decode (seed + sliders → base36)
-  rng.js                Seeded PRNG (Park-Miller LCG)
-  simplex-noise.js      3D Simplex noise with fBm and ridged fBm
-  color-map.js          Elevation → RGB colour mapping + satellite biome colors
-  sphere-mesh.js        Fibonacci sphere, Delaunay, SphereMesh dual-mesh
-  plates.js             Tectonic plate generation (farthest-point seeding, round-robin flood fill, compactness constraints)
-  coarse-plates.js      Resolution-independent plate pipeline — coarse reference grid, projection, boundary smoothing
-  super-plates.js       Groups same-type plates into ~20 super plates for broad orogenic belts
-  ocean-land.js         Ocean/land assignment with continent seeding
-  elevation.js          Collisions, stress propagation, distance fields, elevation
-  terrain-post.js       Domain warping, bilateral smoothing, glacial/hydraulic/thermal erosion, ridge sharpening, soil creep
-  climate-config.js     Climate simulation tunable parameters (mutable at runtime for the tuning suite)
-  climate-util.js       Shared climate utilities — smoothing, ITCZ lookup, percentile selection
-  wind.js               Seasonal wind simulation — pressure fields, ITCZ tracking, Coriolis wind
-  ocean.js              Ocean surface currents — rule-based wind-belt gyres, coast BFS, circumpolar detection
-  precipitation.js      Precipitation simulation — moisture advection, ITCZ/frontal/orographic effects, blended with heuristic
-  heuristic-precip.js   Heuristic zonal precipitation model — smooth latitude/continentality/orographic patterns
-  temperature.js        Temperature simulation — ITCZ thermal equator, lapse rate, continentality, ocean currents
-  scene.js              Three.js scene, cameras, controls, lights
-  planet-mesh.js        Voronoi mesh, map projection, hover highlight
-  edit-mode.js          Ctrl-click plate multi-select + hover info
-  detail-scale.js       Non-linear (power-curve) detail slider mapping
+  main.js               生成器入口：UI 绑定、动画循环
+  import-main.js        导入页入口：文件上传、导入派发
+  state.js              共享可变应用状态
+  generate.js           Worker 调度器：发送任务、处理结果
+  planet-worker.js      Web Worker：在主线程外运行地质流水线
+  planet-code.js        星球代码编解码（种子 + 滑块 → base36）
+  rng.js                带种子的 PRNG（Park-Miller LCG）
+  simplex-noise.js      3D Simplex 噪声，含 fBm 和 ridged fBm
+  color-map.js          高程 → RGB 颜色映射 + 卫星生物群系颜色
+  sphere-mesh.js        斐波那契球面、Delaunay、SphereMesh 双网格
+  plates.js             构造板块生成（最远点播种、轮转洪泛填充、紧凑度约束）
+  coarse-plates.js      与分辨率无关的板块流水线：粗参考网格、投影、边界平滑
+  super-plates.js       将同类型板块归并为约 20 个超级板块，用于宽阔造山带
+  ocean-land.js         带大陆播种的海洋/陆地分配
+  elevation.js          碰撞、应力传播、距离场、高程
+  terrain-post.js       域扭曲、双边平滑、冰川/水力/热力侵蚀、山脊锐化、土壤蠕变
+  climate-config.js     气候模拟可调参数（调优套件运行时可修改）
+  climate-util.js       共享气候工具：平滑、ITCZ 查找、百分位选择
+  wind.js               季节性风场模拟：气压场、ITCZ 追踪、科里奥利风
+  ocean.js              海洋表层洋流：基于风带的规则环流、海岸 BFS、环极检测
+  precipitation.js      降水模拟：水汽平流、ITCZ/锋面/地形效应，与启发式模型混合
+  heuristic-precip.js   启发式纬向降水模型：平滑纬度/大陆性/地形格局
+  temperature.js        温度模拟：ITCZ 热赤道、递减率、大陆性、洋流
+  scene.js              Three.js 场景、相机、控制器、灯光
+  planet-mesh.js        Voronoi 网格、地图投影、悬停高亮
+  edit-mode.js          Ctrl 点击板块多选 + 悬停信息
+  detail-scale.js       非线性（幂曲线）细节滑块映射
 tuning/
-  climate/              Automated climate tuning suite — scores the simulated Köppen
-                        map of an imported Earth heightmap against the observed
-                        Köppen-Geiger classification and optimizes js/climate-config.js
-                        parameters to match (see tuning/climate/README.md)
+  climate/              自动气候调优套件：将导入地球高度图得到的模拟柯本地图
+                        与观测柯本-盖格分类比较，并优化 js/climate-config.js
+                        参数以匹配（见 tuning/climate/README.md）
 ```
 
-## Dependencies
+## 依赖
 
-Loaded via CDN import maps (no installation needed):
+通过 CDN import maps 加载（无需安装）：
 
-- [Three.js](https://threejs.org/) v0.160.0 — 3D rendering
-- [Delaunator](https://github.com/mapbox/delaunator) v5.0.1 — 2D Delaunay triangulation
+- [Three.js](https://threejs.org/) v0.160.0 — 3D 渲染
+- [Delaunator](https://github.com/mapbox/delaunator) v5.0.1 — 2D Delaunay 三角剖分
 
-## License
+## 许可证
 
-This project is licensed under the GNU General Public License v3.0 — see [LICENSE](LICENSE) for details.
+本项目使用 GNU General Public License v3.0 授权；详情见 [LICENSE](LICENSE)。
 
-## Acknowledgments
+## 致谢
 
-Inspired by [Red Blob Games' planet generation](https://www.redblobgames.com/x/1843-planet-generation/) — Fibonacci sphere meshing, dual-mesh traversal, and distance-field elevation approach.
+灵感来自 [Red Blob Games 的星球生成](https://www.redblobgames.com/x/1843-planet-generation/)：斐波那契球面网格、双网格遍历和基于距离场的高程方法。
 
-Additional inspiration and reference from:
-- [Worldbuilding Pasta](https://worldbuildingpasta.blogspot.com/) — worldbuilding science and climate reference
-- [Artifexian](https://www.youtube.com/@Artifexian) — worldbuilding tutorials and planetary science inspiration
-- [Madeline James](https://www.youtube.com/@MadelineJamesWorldbuilds) ([website](https://www.madelinejameswrites.com/)) — worldbuilding methodology and climate design reference
-- [Fractal Philosophy](https://www.youtube.com/watch?v=7xL0udlhnqI) — procedural terrain generation inspiration
+其他灵感和参考来源：
+
+- [Worldbuilding Pasta](https://worldbuildingpasta.blogspot.com/) — 世界观科学与气候参考
+- [Artifexian](https://www.youtube.com/@Artifexian) — 世界观教程与行星科学灵感
+- [Madeline James](https://www.youtube.com/@MadelineJamesWorldbuilds)（[网站](https://www.madelinejameswrites.com/)）— 世界观方法论与气候设计参考
+- [Fractal Philosophy](https://www.youtube.com/watch?v=7xL0udlhnqI) — 程序化地形生成灵感
