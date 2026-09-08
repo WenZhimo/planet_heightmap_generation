@@ -31,6 +31,13 @@ function randomPlanetSeed() {
     return Math.floor(Math.random() * PLANET_SEED_MAX);
 }
 
+function randomPlanetSeedExcept(seedToAvoid) {
+    let seed = randomPlanetSeed();
+    if (!Number.isFinite(seedToAvoid)) return seed;
+    for (let i = 0; i < 8 && seed === seedToAvoid; i++) seed = randomPlanetSeed();
+    return seed === seedToAvoid ? (seed + 1) % PLANET_SEED_MAX : seed;
+}
+
 function snapshotSliders() {
     for (const id of sliderIds) lastGenValues[id] = document.getElementById(id).value;
 }
@@ -245,7 +252,6 @@ function applyShapeSeed(seedText) {
     if (shapeSeedInput) shapeSeedInput.value = seed;
     const rng = makeShapeSeedRng(seed);
     const values = {
-        sN: seededSliderValue(rng, 420, 720, 1),
         sJ: seededSliderValue(rng, 0.45, 0.95, 0.05),
         sP: seededSliderValue(rng, 16, 120, 1),
         sCn: seededSliderValue(rng, 1, 10, 1),
@@ -584,8 +590,10 @@ genBtn.addEventListener('click', () => {
     // force a fresh generation — the coarse plate grid is fully determined by seed + P + Cn + Csv + Lc.
     const plateChanged = plateSettingsChanged();
     const isRebuild = genBtn.classList.contains('stale') && state.curData && !plateChanged;
-    if (state.curData && !isRebuild && !plateChanged) pendingPlanetSeed = randomPlanetSeed();
-    const seed = isRebuild ? state.curData.seed : getPlanetCodeSeed();
+    const seed = isRebuild
+        ? state.curData.seed
+        : randomPlanetSeedExcept(state.curData ? state.curData.seed : pendingPlanetSeed);
+    pendingPlanetSeed = seed;
     const toggles = isRebuild ? getToggledIndices() : [];
     updatePlanetCode(false);
     generate(seed, toggles, onProgress, shouldSkipClimate());
@@ -642,12 +650,7 @@ function getEncodedToggledIndices() {
 
 function getPlanetCodeSeed() {
     if (!state.curData) return pendingPlanetSeed;
-    if (plateSettingsChanged()) {
-        if (pendingPlanetSeed === state.curData.seed) pendingPlanetSeed = randomPlanetSeed();
-        return pendingPlanetSeed;
-    }
-    pendingPlanetSeed = state.curData.seed;
-    return state.curData.seed;
+    return pendingPlanetSeed !== state.curData.seed ? pendingPlanetSeed : state.curData.seed;
 }
 
 function getCurrentMapCodeParams() {
@@ -1466,8 +1469,8 @@ sidebarToggle.addEventListener('click', () => {
             clearReapplyPending();
             hideInitialPreview();
             showBuildOverlay();
-            if (state.curData) pendingPlanetSeed = randomPlanetSeed();
-            const seed = getPlanetCodeSeed();
+            const seed = randomPlanetSeedExcept(state.curData ? state.curData.seed : pendingPlanetSeed);
+            pendingPlanetSeed = seed;
             updatePlanetCode(false);
             generate(seed, [], onProgress, shouldSkipClimate());
         }
