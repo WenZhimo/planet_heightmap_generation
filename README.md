@@ -46,6 +46,8 @@ World Orogen 是面向星球的概念美术工具。它服务于项目早期的�
 
 用任意本地 HTTP 服务器提供项目文件（ES Modules 需要通过 HTTP 加载）：
 
+Windows 用户也可以直接双击项目根目录中的 `start.bat`，它会启动本地服务器并自动打开浏览器。
+
 ```bash
 # Python
 python3 -m http.server 8000
