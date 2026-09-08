@@ -140,7 +140,7 @@
         <h2>分享你的世界</h2>
         <p>每颗星球都有唯一星球代码。分享 URL（例如 orogen.studio/#CODE），即可让任何人复现你的世界，包括你手动编辑过的构造板块。</p>
     </main>
-    <div id="buildOverlay" class="build-overlay initial">
+    <div id="buildOverlay" class="build-overlay initial hidden">
         <div class="build-overlay-inner">
             <div class="build-overlay-spinner"></div>
             <div class="build-overlay-title">World Orogen</div>
@@ -150,7 +150,8 @@
             <div class="progress-label" id="buildBarLabel"></div>
         </div>
     </div>
-    <canvas id="canvas"></canvas>
+    <div id="initialPreview" aria-hidden="true"></div>
+    <canvas id="canvas" class="empty"></canvas>
     <div id="ui">
         <div id="sheetHandle" class="sheet-handle"><span></span></div>
         <div id="sidebarHeader">
@@ -164,6 +165,14 @@
         <details class="section" open>
             <summary>塑造世界</summary>
             <div class="section-body">
+                <div class="cg shape-seed-group">
+                    <label for="shapeSeed">塑造种子 <span class="tip" data-tip="输入任意文字或数字并应用，只会随机调整“塑造世界”里的参数，不会改变地形雕刻、气候、地图或显示选项">?</span></label>
+                    <div class="shape-seed-row">
+                        <input type="text" id="shapeSeed" placeholder="例如 atlas-42" maxlength="48">
+                        <button id="shapeSeedRandom" type="button" title="随机生成塑造种子">随机</button>
+                        <button id="shapeSeedApply" type="button" title="按塑造种子调整参数">应用</button>
+                    </div>
+                </div>
                 <div class="cg">
                     <label>细节 <span class="tip" data-tip="球面分辨率：细节越高，海岸线和地形越精细，但生成时间也越长">?</span> <span class="v" id="vN">204,000</span></label>
                     <input type="range" id="sN" min="0" max="1000" step="1" value="600">
@@ -382,7 +391,7 @@
                 </details>
             </div>
         </details>
-        <button id="exportBtn" class="export-btn">导出地图</button>
+        <button id="exportBtn" class="export-btn" disabled title="请先生成一个世界">导出地图</button>
         <a id="repoLink" href="https://github.com/raguilar011095/planet_heightmap_generation" target="_blank" rel="noopener">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.64 7.64 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
             GitHub
@@ -541,8 +550,8 @@
         </div>
     </div>
 
-    <div id="topInfo">拖拽旋转 &middot; 滚轮缩放 &middot; Ctrl 点击重塑大陆</div>
-    <button id="editToggle" class="edit-toggle" title="切换板块编辑模式">
+    <div id="topInfo">调整塑造世界参数 &middot; 点击生成新世界</div>
+    <button id="editToggle" class="edit-toggle" title="请先生成一个世界" disabled>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14.5 2.5l3 3L6 17H3v-3L14.5 2.5z"/>
         </svg>
@@ -560,7 +569,7 @@
         </svg>
         <span>重建 (0)</span>
     </button>
-    <div id="info">拖拽旋转 &middot; 滚轮缩放 &middot; Ctrl 点击重塑大陆</div>
+    <div id="info">预览背景已就绪 &middot; 真正生成会在点击后开始</div>
 
     <script type="importmap">
     {

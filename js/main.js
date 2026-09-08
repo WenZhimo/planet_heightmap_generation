@@ -1,4 +1,4 @@
-// Entry point — wires UI controls, animation loop, and kicks off initial generation.
+// Entry point — wires UI controls, animation loop, and generation flow.
 
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
@@ -17,17 +17,38 @@ import { formatLatLabel, formatLonLabel, getMapProjectionLabel } from './map-pro
 // Slider value displays + stale tracking
 const sliderIds = ['sN','sP','sCn','sJ','sNs','sCsv','sLc'];
 const PLATE_SLIDERS = ['sP', 'sCn', 'sCsv', 'sLc'];
+const PLANET_SEED_MAX = 16777216;
 let lastGenValues = {};
+let pendingPlanetSeed = randomPlanetSeed();
+let startupGenerationInProgress = false;
+
+function randomPlanetSeed() {
+    const values = new Uint32Array(1);
+    if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(values);
+        return values[0] % PLANET_SEED_MAX;
+    }
+    return Math.floor(Math.random() * PLANET_SEED_MAX);
+}
 
 function snapshotSliders() {
     for (const id of sliderIds) lastGenValues[id] = document.getElementById(id).value;
 }
 
+function plateSettingsChanged() {
+    return !!state.curData && PLATE_SLIDERS.some(id => document.getElementById(id).value !== lastGenValues[id]);
+}
+
 function checkStale() {
     const btn = document.getElementById('generate');
     if (btn.classList.contains('generating')) return;
+    if (!state.curData) {
+        btn.classList.remove('stale', 'regen');
+        btn.textContent = '生成新世界';
+        return;
+    }
     const detailSliders = ['sN', 'sJ', 'sNs'];
-    const plateChanged = PLATE_SLIDERS.some(id => document.getElementById(id).value !== lastGenValues[id]);
+    const plateChanged = plateSettingsChanged();
     const detailChanged = detailSliders.some(id => document.getElementById(id).value !== lastGenValues[id]);
     btn.classList.remove('stale', 'regen');
     if (plateChanged) {
@@ -178,6 +199,78 @@ for (const [s,v] of [['sN','vN'],['sP','vP'],['sCn','vCn'],['sJ','vJ'],['sNs','v
     }
 }
 
+const shapeSeedInput = document.getElementById('shapeSeed');
+const shapeSeedRandomBtn = document.getElementById('shapeSeedRandom');
+const shapeSeedApplyBtn = document.getElementById('shapeSeedApply');
+
+function hashShapeSeed(seedText) {
+    let h = 2166136261;
+    for (let i = 0; i < seedText.length; i++) {
+        h ^= seedText.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+}
+
+function makeShapeSeedRng(seedText) {
+    let t = hashShapeSeed(seedText) || 0x6d2b79f5;
+    return () => {
+        t = (t + 0x6d2b79f5) >>> 0;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function seededSliderValue(rng, min, max, step) {
+    const slots = Math.round((max - min) / step);
+    const raw = min + Math.floor(rng() * (slots + 1)) * step;
+    const decimals = step < 1 ? String(step).split('.')[1].length : 0;
+    return decimals > 0 ? raw.toFixed(decimals) : String(raw);
+}
+
+function setSliderFromSeed(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function makeRandomShapeSeed() {
+    return 'shape-' + randomPlanetSeed().toString(36).padStart(5, '0');
+}
+
+function applyShapeSeed(seedText) {
+    const seed = (seedText || '').trim() || makeRandomShapeSeed();
+    if (shapeSeedInput) shapeSeedInput.value = seed;
+    const rng = makeShapeSeedRng(seed);
+    const values = {
+        sN: seededSliderValue(rng, 420, 720, 1),
+        sJ: seededSliderValue(rng, 0.45, 0.95, 0.05),
+        sP: seededSliderValue(rng, 16, 120, 1),
+        sCn: seededSliderValue(rng, 1, 10, 1),
+        sNs: seededSliderValue(rng, 0.12, 0.50, 0.01),
+        sCsv: seededSliderValue(rng, 0, 1, 0.05),
+        sLc: seededSliderValue(rng, 0.15, 0.65, 0.01),
+    };
+    for (const [id, value] of Object.entries(values)) setSliderFromSeed(id, value);
+    updatePlanetCode(true);
+}
+
+if (shapeSeedRandomBtn && shapeSeedInput) {
+    shapeSeedRandomBtn.addEventListener('click', () => {
+        shapeSeedInput.value = makeRandomShapeSeed();
+        applyShapeSeed(shapeSeedInput.value);
+    });
+}
+
+if (shapeSeedApplyBtn && shapeSeedInput) {
+    shapeSeedApplyBtn.addEventListener('click', () => applyShapeSeed(shapeSeedInput.value));
+    shapeSeedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyShapeSeed(shapeSeedInput.value);
+    });
+}
+
 // Force range input re-render when <details> sections are opened.
 // Browsers may not update the visual thumb position for sliders that were
 // hidden (inside a closed <details>) when their value was set via JS.
@@ -212,6 +305,12 @@ const vizLegend = document.getElementById('vizLegend');
 const debugLayerEl = document.getElementById('debugLayer');
 
 function switchVisualization(layer) {
+    if (!state.curData) {
+        state.debugLayer = layer;
+        updateLegend(layer);
+        updateViewHint();
+        return;
+    }
     if (CLIMATE_LAYERS.has(layer) && !state.climateComputed) {
         // Need to compute climate first
         showBuildOverlay();
@@ -420,7 +519,8 @@ function updateLegend(layer) {
 const buildOverlay  = document.getElementById('buildOverlay');
 const buildBarFill  = document.getElementById('buildBarFill');
 const buildBarLabel = document.getElementById('buildBarLabel');
-let overlayActive = true; // starts active (visible in HTML on first load)
+const initialPreview = document.getElementById('initialPreview');
+let overlayActive = false;
 let buildOverlayHideTimer = 0;
 
 function onProgress(pct, label) {
@@ -458,12 +558,23 @@ function hideBuildOverlay() {
     }, 500);
 }
 
+function hideInitialPreview() {
+    if (initialPreview) initialPreview.classList.add('hidden');
+    if (canvas) canvas.classList.remove('empty');
+}
+
+function showInitialPreview() {
+    if (initialPreview) initialPreview.classList.remove('hidden');
+    if (canvas) canvas.classList.add('empty');
+}
+
 // Generate button
 const genBtn = document.getElementById('generate');
 genBtn.addEventListener('click', () => {
     clearReapplyPending();
     buildWindArrows(null); // dispose previous wind arrows
     buildOceanCurrentArrows(null); // dispose previous ocean arrows
+    hideInitialPreview();
     showBuildOverlay();
     // Collapse bottom sheet on mobile so user can see the planet build
     const ui = document.getElementById('ui');
@@ -471,14 +582,23 @@ genBtn.addEventListener('click', () => {
     // Rebuild: reuse seed + plate edits so only resolution/params change.
     // If plate-affecting sliders (Plates, Continents, Continent Size Variety, Land Coverage) changed,
     // force a fresh generation — the coarse plate grid is fully determined by seed + P + Cn + Csv + Lc.
-    const plateChanged = PLATE_SLIDERS.some(id => document.getElementById(id).value !== lastGenValues[id]);
+    const plateChanged = plateSettingsChanged();
     const isRebuild = genBtn.classList.contains('stale') && state.curData && !plateChanged;
-    const seed = isRebuild ? state.curData.seed : undefined;
+    if (state.curData && !isRebuild && !plateChanged) pendingPlanetSeed = randomPlanetSeed();
+    const seed = isRebuild ? state.curData.seed : getPlanetCodeSeed();
     const toggles = isRebuild ? getToggledIndices() : [];
+    updatePlanetCode(false);
     generate(seed, toggles, onProgress, shouldSkipClimate());
 });
 genBtn.addEventListener('generate-done', snapshotSliders);
 genBtn.addEventListener('generate-done', hideBuildOverlay);
+genBtn.addEventListener('generate-done', () => {
+    startupGenerationInProgress = false;
+    if (state.curData) pendingPlanetSeed = state.curData.seed;
+    hideInitialPreview();
+    syncWorldReadyControls();
+    updateViewHint();
+});
 genBtn.addEventListener('generate-done', () => {
     const infoEl = document.getElementById('info');
     if (!infoEl.dataset.nudged) {
@@ -517,8 +637,17 @@ function getToggledIndices() {
 }
 
 function getEncodedToggledIndices() {
-    const plateChanged = PLATE_SLIDERS.some(id => document.getElementById(id).value !== lastGenValues[id]);
-    return plateChanged ? [] : getToggledIndices();
+    return plateSettingsChanged() ? [] : getToggledIndices();
+}
+
+function getPlanetCodeSeed() {
+    if (!state.curData) return pendingPlanetSeed;
+    if (plateSettingsChanged()) {
+        if (pendingPlanetSeed === state.curData.seed) pendingPlanetSeed = randomPlanetSeed();
+        return pendingPlanetSeed;
+    }
+    pendingPlanetSeed = state.curData.seed;
+    return state.curData.seed;
 }
 
 function getCurrentMapCodeParams() {
@@ -532,11 +661,9 @@ function getCurrentMapCodeParams() {
 /** Encode current planet state and update the seed input + URL hash. */
 function updatePlanetCode(flash) {
     if (planetCodeRefreshSuppressed) return;
-    const d = state.curData;
-    if (!d) return;
     const { mapProjection, mapCenterLon, mapCenterLat } = getCurrentMapCodeParams();
     const code = encodePlanetCode(
-        d.seed,
+        getPlanetCodeSeed(),
         detailFromSlider(+document.getElementById('sN').value),
         +document.getElementById('sJ').value,
         +document.getElementById('sP').value,
@@ -561,7 +688,7 @@ function updatePlanetCode(flash) {
     currentCode = code;
     seedInput.value = code;
     updateLoadBtn();
-    history.replaceState(null, '', '#' + code);
+    if (state.curData) history.replaceState(null, '', '#' + code);
     if (flash) {
         seedInput.classList.add('flash');
         seedInput.addEventListener('animationend', () => seedInput.classList.remove('flash'), { once: true });
@@ -666,6 +793,7 @@ function applyCode(code) {
         return;
     }
     seedError.classList.remove('visible');
+    pendingPlanetSeed = params.seed;
     // Set slider values + fire input events to update displays
     const map = paramsToSliderMap(params);
     planetCodeRefreshSuppressed = true;
@@ -686,6 +814,7 @@ function applyCode(code) {
     clearReapplyPending();
     state.pendingToggles.clear();
     document.getElementById('rebuildFab').style.display = 'none';
+    hideInitialPreview();
     showBuildOverlay();
     generate(params.seed, params.toggledIndices, onProgress, shouldSkipClimate());
 }
@@ -735,7 +864,7 @@ let mapProjectionRefreshTimer = 0;
 let mapProjectionRefreshToken = 0;
 
 function rebuildMapProjectionView() {
-    if (!state.mapMode) return;
+    if (!state.mapMode || !state.curData) return;
     buildMapMesh();
     const layer = state.debugLayer;
     const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
@@ -747,7 +876,7 @@ function rebuildMapProjectionView() {
 }
 
 function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影…') {
-    if (!state.mapMode) return;
+    if (!state.mapMode || !state.curData) return;
     if (mapProjectionRefreshTimer) {
         clearTimeout(mapProjectionRefreshTimer);
         mapProjectionRefreshTimer = 0;
@@ -772,7 +901,7 @@ function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影�
 }
 
 function scheduleMapProjectionRefresh() {
-    if (!state.mapMode) return;
+    if (!state.mapMode || !state.curData) return;
     if (mapProjectionRefreshTimer) clearTimeout(mapProjectionRefreshTimer);
     mapProjectionRefreshTimer = setTimeout(() => {
         mapProjectionRefreshTimer = 0;
@@ -815,6 +944,14 @@ sMapCenterLat.addEventListener('change', () => {
 });
 
 function updateViewHint() {
+    if (!state.curData) {
+        const hint = '调整塑造世界参数 · 点击生成新世界';
+        for (const id of ['topInfo', 'info']) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = hint;
+        }
+        return;
+    }
     const globeHint = state.isTouchDevice
         ? '拖拽旋转 · 双指缩放 · 使用编辑按钮重塑'
         : '拖拽旋转 · 滚轮缩放 · Ctrl 点击重塑大陆';
@@ -826,6 +963,25 @@ function updateViewHint() {
     for (const id of ['topInfo', 'info']) {
         const el = document.getElementById(id);
         if (el) el.textContent = hint;
+    }
+}
+
+function syncWorldReadyControls() {
+    const ready = !!state.curData;
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        exportBtn.disabled = !ready;
+        exportBtn.title = ready ? '导出地图' : '请先生成一个世界';
+    }
+
+    const editBtn = document.getElementById('editToggle');
+    if (editBtn) {
+        editBtn.disabled = !ready;
+        editBtn.title = ready ? '切换板块编辑模式' : '请先生成一个世界';
+        if (!ready) {
+            state.editMode = false;
+            editBtn.classList.remove('active');
+        }
     }
 }
 
@@ -842,7 +998,7 @@ function setViewMode(mode) {
         starsMesh.visible = false;
         if (state.wireMesh) state.wireMesh.visible = false;
         if (state.arrowGroup) state.arrowGroup.visible = false;
-        if (!state.mapMesh) {
+        if (state.curData && !state.mapMesh) {
             showBuildOverlay();
             onProgress(0, '正在构建地图网格\u2026');
             // Yield to let the overlay paint, then build the mesh
@@ -1020,6 +1176,11 @@ if (debugLayerEl) {
     }
 
     function openModal() {
+        if (!state.curData) {
+            alert('请先生成一个世界再导出。');
+            syncWorldReadyControls();
+            return;
+        }
         overlay.classList.remove('hidden');
         updateDims();
         renderExportDebugOptions();
@@ -1274,6 +1435,7 @@ sidebarToggle.addEventListener('click', () => {
     const editBtn = document.getElementById('editToggle');
     if (!editBtn) return;
     editBtn.addEventListener('click', () => {
+        if (!state.curData) return;
         state.editMode = !state.editMode;
         editBtn.classList.toggle('active', state.editMode);
     });
@@ -1302,16 +1464,19 @@ sidebarToggle.addEventListener('click', () => {
             // Collapse sheet so user sees the planet build
             if (isMobileLayout()) uiPanel.classList.add('collapsed');
             clearReapplyPending();
+            hideInitialPreview();
             showBuildOverlay();
-            generate(undefined, [], onProgress, shouldSkipClimate());
+            if (state.curData) pendingPlanetSeed = randomPlanetSeed();
+            const seed = getPlanetCodeSeed();
+            updatePlanetCode(false);
+            generate(seed, [], onProgress, shouldSkipClimate());
         }
     });
 })();
 
 // Mobile info text
 if (state.isTouchDevice) {
-    const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = '拖拽旋转 \u00b7 双指缩放 \u00b7 使用编辑按钮重塑';
+    updateViewHint();
 }
 
 // Disable export widths > 8192 on touch devices
@@ -1433,9 +1598,12 @@ window.addEventListener('resize', () => {
         }
     }
 
-    // Auto-show on first visit — wait until the build overlay has faded out
+    // Auto-show on first visit. If no world is being loaded, show over the static preview.
     overlay.classList.add('hidden');
     if (!localStorage.getItem(LS_KEY)) {
+        setTimeout(() => {
+            if (!state.curData && !startupGenerationInProgress && !genBtn.classList.contains('generating')) openModal();
+        }, 700);
         genBtn.addEventListener('generate-done', () => {
             if (buildOverlay) {
                 buildOverlay.addEventListener('transitionend', () => openModal(), { once: true });
@@ -1604,19 +1772,41 @@ window.takePreview = function(width = 1200, height = 630) {
     console.log('preview.png downloaded!');
 };
 
-// Go! Check URL hash for a planet code, otherwise random generation.
+// Go! Check URL hash for a planet code. Without a code, stay on the static preview
+// until the user clicks Generate.
 const hashCode = location.hash.replace(/^#/, '').trim();
 const hashParams = hashCode ? decodePlanetCode(hashCode) : null;
 if (hashParams) {
+    startupGenerationInProgress = true;
+    pendingPlanetSeed = hashParams.seed;
     const map = paramsToSliderMap(hashParams);
-    for (const [id, val] of Object.entries(map)) {
-        const el = document.getElementById(id);
-        el.value = val;
-        el.dispatchEvent(new Event('input'));
+    planetCodeRefreshSuppressed = true;
+    try {
+        for (const [id, val] of Object.entries(map)) {
+            const el = document.getElementById(id);
+            el.value = val;
+            el.dispatchEvent(new Event('input'));
+        }
+        applyMapCodeParams(hashParams);
+    } finally {
+        planetCodeRefreshSuppressed = false;
     }
-    applyMapCodeParams(hashParams);
+    currentCode = hashCode.toLowerCase();
+    seedInput.value = currentCode;
+    updateLoadBtn();
+    hideInitialPreview();
+    showBuildOverlay();
     generate(hashParams.seed, hashParams.toggledIndices, onProgress, shouldSkipClimate());
 } else {
-    generate(undefined, [], onProgress, shouldSkipClimate());
+    snapshotSliders();
+    syncWorldReadyControls();
+    updatePlanetCode(false);
+    showInitialPreview();
+    updateViewHint();
+    if (hashCode) {
+        seedInput.value = hashCode.toLowerCase();
+        updateLoadBtn();
+        seedError.classList.add('visible');
+    }
 }
 animate();
