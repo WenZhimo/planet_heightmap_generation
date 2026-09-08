@@ -584,7 +584,9 @@ button#generate.generating {
 }
 #exportCard {
     position: relative;
-    max-width: 380px; width: 90%;
+    max-width: 440px; width: 90%;
+    max-height: min(86vh, 720px);
+    overflow-y: auto;
     background: rgba(8,8,28,0.94); backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px;
@@ -603,8 +605,48 @@ button#generate.generating {
     transition: color 0.2s;
 }
 #exportClose:hover { color: #fff; }
+.export-bundle-options {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin-top: 14px;
+    padding-top: 14px;
+}
+.export-subtitle {
+    color: #9ac;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin-bottom: 7px;
+    text-transform: uppercase;
+}
+.export-note {
+    color: #789;
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+.export-debug-layer-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    max-height: 190px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.export-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #bcd;
+    font-size: 12px;
+    line-height: 1.25;
+    min-width: 0;
+}
+.export-check input {
+    flex: 0 0 auto;
+    accent-color: #48f;
+}
 .export-actions {
-    display: flex; justify-content: flex-end; gap: 10px;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px;
     margin-top: 18px;
 }
 
@@ -991,6 +1033,10 @@ button#generate.generating {
     /* Tutorial card — tighter padding */
     #tutorialCard { padding: 24px 20px 18px; }
     #whatsNewCard { padding: 24px 20px 18px; }
+    #exportCard { width: calc(100vw - 28px); padding: 24px 20px 18px; }
+    .export-debug-layer-list { grid-template-columns: 1fr; max-height: 170px; }
+    .export-actions { justify-content: stretch; }
+    .export-actions button { flex: 1 1 100%; }
 }
 
 /* ───── Mobile landscape ───── */
@@ -1003,6 +1049,7 @@ button#generate.generating {
     #ui { padding: 8px 14px 14px; }
     #tutorialCard { padding: 20px 16px 14px; }
     #whatsNewCard { padding: 20px 16px 14px; }
+    #exportCard { padding: 20px 16px 14px; }
     button#generate { padding: 12px; font-size: 15px; }
     .cg label { font-size: 14px; }
     .section summary { font-size: 13px; }

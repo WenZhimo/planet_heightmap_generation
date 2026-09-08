@@ -421,7 +421,7 @@
             <div class="tutorial-step" data-step="4">
                 <h3>保存与分享</h3>
                 <p>每颗星球都会在生成按钮下方得到唯一<strong>星球代码</strong>，其中也包含你编辑过的板块。<strong>复制</strong>代码即可分享，或<strong>粘贴</strong>代码并点击<strong>加载</strong>来复现他人的世界。也可以直接分享 URL。</p>
-                <p>使用<strong>导出地图</strong>下载高分辨率等距柱状图片，包括地形、卫星、气候、高度图和陆地遮罩。<strong>全部导出</strong>可一键下载卫星、气候、高度图和陆地遮罩。</p>
+                <p>使用<strong>导出地图</strong>下载高分辨率等距柱状图片，或导出包含地形、卫星、气候、高度图、可选检视图层和 3D 模型的<strong>世界包 ZIP</strong>。</p>
             </div>
             <div class="tutorial-dots">
                 <span class="dot active" data-dot="0"></span>
@@ -464,10 +464,25 @@
                     <option value="65536">65536</option>
                 </select>
             </div>
+            <div class="export-bundle-options">
+                <div class="export-subtitle">世界包 ZIP</div>
+                <p class="export-note">默认打包地形、卫星、气候和全范围高度图。</p>
+                <div class="cg">
+                    <label>3D 模型</label>
+                    <select id="exportModelFormat">
+                        <option value="" selected>不导出模型</option>
+                        <option value="obj">OBJ + MTL</option>
+                        <option value="gltf">glTF 2.0</option>
+                        <option value="ply">PLY 彩色网格</option>
+                    </select>
+                </div>
+                <div class="export-subtitle">可选贴图 / 检视图层</div>
+                <div id="exportDebugLayerList" class="export-debug-layer-list"></div>
+            </div>
             <div class="export-actions">
                 <button id="exportCancel" class="btn-ghost">取消</button>
-                <button id="exportGo" class="btn-primary">导出</button>
-                <button id="exportAllGo" class="btn-primary">全部导出</button>
+                <button id="exportGo" class="btn-primary">导出单张</button>
+                <button id="exportAllGo" class="btn-primary">导出世界包 ZIP</button>
             </div>
         </div>
     </div>

@@ -7,7 +7,7 @@ import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
 import { state } from './state.js';
 import { generate, reapplyViaWorker, computeClimateViaWorker, editRecomputeViaWorker } from './generate.js';
 import { encodePlanetCode, decodePlanetCode } from './planet-code.js';
-import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight, updatePendingHighlight, updateMapPendingHighlight } from './planet-mesh.js';
+import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, rebuildGrids, exportMap, exportWorldBundle, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight, updatePendingHighlight, updateMapPendingHighlight } from './planet-mesh.js';
 import { setupEditMode } from './edit-mode.js';
 import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
@@ -202,7 +202,7 @@ const CLIMATE_LAYERS = new Set([
     'precipSummer', 'precipWinter',
     'rainShadowSummer', 'rainShadowWinter',
     'tempSummer', 'tempWinter',
-    'koppen', 'biome', 'continentality'
+    'koppen', 'biome', 'continentality', 'tempContinentality'
 ]);
 
 // Map tabs → tab-layer mapping
@@ -869,23 +869,100 @@ if (debugLayerEl) {
 
 // Export modal
 (function initExport() {
-    const overlay   = document.getElementById('exportOverlay');
-    const closeBtn  = document.getElementById('exportClose');
-    const cancelBtn = document.getElementById('exportCancel');
-    const goBtn     = document.getElementById('exportGo');
-    const widthEl   = document.getElementById('exportWidth');
-    const dimsEl    = document.getElementById('exportDims');
-    const typeEl    = document.getElementById('exportType');
-    const openBtn   = document.getElementById('exportBtn');
+    const overlay        = document.getElementById('exportOverlay');
+    const closeBtn       = document.getElementById('exportClose');
+    const cancelBtn      = document.getElementById('exportCancel');
+    const goBtn          = document.getElementById('exportGo');
+    const widthEl        = document.getElementById('exportWidth');
+    const dimsEl         = document.getElementById('exportDims');
+    const typeEl         = document.getElementById('exportType');
+    const openBtn        = document.getElementById('exportBtn');
+    const exportAllBtn   = document.getElementById('exportAllGo');
+    const modelFormatEl  = document.getElementById('exportModelFormat');
+    const debugLayerList = document.getElementById('exportDebugLayerList');
+
+    const DEFAULT_BUNDLE_TYPES = [
+        { type: 'color',     label: '地形图' },
+        { type: 'biome',     label: '卫星图' },
+        { type: 'koppen',    label: '气候图' },
+        { type: 'heightmap', label: '高度图' },
+    ];
+    const EXTRA_BUNDLE_TYPES = [
+        { type: 'landmask', label: '陆地遮罩' },
+    ];
+    const DEFAULT_OPTIONAL_EXCLUDE = new Set(['', 'biome', 'koppen', 'heightmap']);
 
     function updateDims() {
         const w = +widthEl.value;
         dimsEl.textContent = w + ' \u00D7 ' + (w / 2);
     }
 
+    function debugExportOptions() {
+        const out = [...EXTRA_BUNDLE_TYPES];
+        const seen = new Set(out.map(opt => opt.type));
+        if (!debugLayerEl) return out;
+        for (const opt of debugLayerEl.options) {
+            const type = opt.value;
+            if (!type || DEFAULT_OPTIONAL_EXCLUDE.has(type) || seen.has(type)) continue;
+            out.push({ type, label: opt.textContent.trim() || type });
+            seen.add(type);
+        }
+        return out;
+    }
+
+    function renderExportDebugOptions() {
+        if (!debugLayerList) return;
+        const checked = new Set([...debugLayerList.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value));
+        debugLayerList.replaceChildren();
+        const options = debugExportOptions();
+        if (!options.length) {
+            const note = document.createElement('p');
+            note.className = 'export-note';
+            note.textContent = '当前没有额外的检视图层可导出。';
+            debugLayerList.appendChild(note);
+            return;
+        }
+        for (const opt of options) {
+            const label = document.createElement('label');
+            label.className = 'export-check';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = opt.type;
+            input.checked = checked.has(opt.type);
+            label.append(input, document.createTextNode(opt.label));
+            debugLayerList.appendChild(label);
+        }
+    }
+
+    function selectedBundleTypes() {
+        const labels = new Map(debugExportOptions().map(opt => [opt.type, opt.label]));
+        const out = [...DEFAULT_BUNDLE_TYPES];
+        if (!debugLayerList) return out;
+        for (const input of debugLayerList.querySelectorAll('input[type="checkbox"]:checked')) {
+            out.push({ type: input.value, label: labels.get(input.value) || input.value });
+        }
+        return out;
+    }
+
+    function needsClimate(types) {
+        return types.some(item => item && CLIMATE_LAYERS.has(item.type));
+    }
+
+    async function ensureClimate(types) {
+        if (state.climateComputed || !needsClimate(types)) return;
+        onProgress(0, '正在计算气候...');
+        await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+    }
+
+    function reportExportError(err) {
+        console.error(err);
+        alert('导出失败，请降低导出宽度后重试。');
+    }
+
     function openModal() {
         overlay.classList.remove('hidden');
         updateDims();
+        renderExportDebugOptions();
         // Disable climate-dependent export types when climate isn't computed
         for (const opt of typeEl.options) {
             if (opt.value === 'biome' || opt.value === 'koppen') {
@@ -910,33 +987,30 @@ if (debugLayerEl) {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        onProgress(0, '正在准备导出...');
-        await exportMap(type, w, onProgress);
-        hideBuildOverlay();
+        try {
+            onProgress(0, '正在准备导出...');
+            await exportMap(type, w, onProgress);
+        } catch (err) {
+            reportExportError(err);
+        } finally {
+            hideBuildOverlay();
+        }
     });
-
-    // Export All — downloads Satellite, Climate, Heightmap, and Land Mask
-    const exportAllBtn = document.getElementById('exportAllGo');
-    const EXPORT_ALL_TYPES = [
-        { type: 'biome',          label: '卫星图' },
-        { type: 'koppen',         label: '气候图' },
-        { type: 'landheightmap',  label: '高度图' },
-        { type: 'landmask',       label: '陆地遮罩' },
-    ];
 
     exportAllBtn.addEventListener('click', async () => {
         const w = +widthEl.value;
+        const textureTypes = selectedBundleTypes();
+        const modelFormat = modelFormatEl ? modelFormatEl.value : '';
         closeModal();
         showBuildOverlay();
-
-        // Compute climate first if needed (Satellite & Climate require it)
-        if (!state.climateComputed) {
-            onProgress(0, '正在计算气候...');
-            await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+        try {
+            await ensureClimate(textureTypes);
+            await exportWorldBundle({ width: w, textureTypes, modelFormat }, onProgress);
+        } catch (err) {
+            reportExportError(err);
+        } finally {
+            hideBuildOverlay();
         }
-
-        await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
-        hideBuildOverlay();
     });
 })();
 

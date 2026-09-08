@@ -266,10 +266,25 @@
                     <option value="65536">65536</option>
                 </select>
             </div>
+            <div class="export-bundle-options">
+                <div class="export-subtitle">世界包 ZIP</div>
+                <p class="export-note">默认打包地形、卫星、气候和全范围高度图。</p>
+                <div class="cg">
+                    <label>3D 模型</label>
+                    <select id="exportModelFormat">
+                        <option value="" selected>不导出模型</option>
+                        <option value="obj">OBJ + MTL</option>
+                        <option value="gltf">glTF 2.0</option>
+                        <option value="ply">PLY 彩色网格</option>
+                    </select>
+                </div>
+                <div class="export-subtitle">可选贴图 / 检视图层</div>
+                <div id="exportDebugLayerList" class="export-debug-layer-list"></div>
+            </div>
             <div class="export-actions">
                 <button id="exportCancel" class="btn-ghost">取消</button>
-                <button id="exportGo" class="btn-primary">导出</button>
-                <button id="exportAllGo" class="btn-primary">全部导出</button>
+                <button id="exportGo" class="btn-primary">导出单张</button>
+                <button id="exportAllGo" class="btn-primary">导出世界包 ZIP</button>
             </div>
         </div>
     </div>

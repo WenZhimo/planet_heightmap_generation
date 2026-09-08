@@ -7,6 +7,7 @@ import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { getMapProjectionParams, projectMapDirectionFromXyz, projectMapSegmentFromLonLat, projectMapSegmentFromXyz, projectMapTriangleFromXyz } from './map-projection.js';
+import { createZipBlob, downloadBlob } from './zip-util.js';
 
 // Clipping planes for map wrap — keep everything within x ∈ [-2, 2]
 renderer.localClippingEnabled = true;
@@ -2173,21 +2174,104 @@ export async function exportMap(type, width, onProgress) {
     }
 }
 
-function exportFilename(type, seed) {
+function sanitizeFilePart(value) {
+    return String(value || 'world').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'world';
+}
+
+function exportTypeSlug(type) {
+    return String(type || 'terrain')
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'terrain';
+}
+
+function currentExportSeed() {
+    return sanitizeFilePart(location.hash.replace(/^#/, '').trim() || (state.curData ? state.curData.seed : 'world'));
+}
+
+export function exportFilename(type, seed) {
+    const cleanSeed = sanitizeFilePart(seed);
     switch (type) {
-        case 'landmask':       return `orogen-landmask-${seed}.png`;
-        case 'landheightmap':  return `orogen-land-heightmap-${seed}.png`;
-        case 'heightmap':      return `orogen-heightmap-${seed}.png`;
-        case 'biome':          return `orogen-satellite-${seed}.png`;
-        case 'koppen':         return `orogen-climate-${seed}.png`;
-        default:               return `orogen-colormap-${seed}.png`;
+        case 'color':          return `orogen-terrain-${cleanSeed}.png`;
+        case 'landmask':       return `orogen-landmask-${cleanSeed}.png`;
+        case 'landheightmap':  return `orogen-land-heightmap-${cleanSeed}.png`;
+        case 'heightmap':      return `orogen-heightmap-${cleanSeed}.png`;
+        case 'biome':          return `orogen-satellite-${cleanSeed}.png`;
+        case 'koppen':         return `orogen-climate-${cleanSeed}.png`;
+        default:               return `orogen-${exportTypeSlug(type)}-${cleanSeed}.png`;
     }
 }
 
-// Batch export — builds geometry once, recolors per type. Avoids GPU memory
-// exhaustion that occurs when exportMap is called multiple times in sequence.
-export async function exportMapBatch(types, width, onProgress) {
-    if (!state.curData) return;
+function is16BitExportType(type) {
+    return type === 'heightmap' || type === 'landheightmap';
+}
+
+function isBWExportType(type) {
+    return is16BitExportType(type) || type === 'landmask';
+}
+
+function makeExportColorContext(type, mesh, r_elevation, debugLayers, biomeSmoothed) {
+    const ctx = { type, r_elevation, dbgArr: null, dbgMin: 0, dbgMax: 0 };
+    const oceanSeason = type === 'oceanCurrentWinter' ? 'winter' : 'summer';
+    ctx.oceanWarmth = (type === 'oceanCurrentSummer' || type === 'oceanCurrentWinter')
+        ? state.curData[`r_ocean_warmth_${oceanSeason}`]
+        : null;
+    ctx.oceanSpeed = (type === 'oceanCurrentSummer' || type === 'oceanCurrentWinter')
+        ? state.curData[`r_ocean_speed_${oceanSeason}`]
+        : null;
+    ctx.koppenArr = (type === 'koppen' || type === 'biome') ? (debugLayers && debugLayers.koppen) : null;
+    ctx.biomeSmoothed = type === 'biome' ? biomeSmoothed : null;
+    ctx.precipArr = (type === 'precipSummer' || type === 'precipWinter') ? (debugLayers && debugLayers[type]) : null;
+    ctx.rainShadowArr = (type === 'rainShadowSummer' || type === 'rainShadowWinter') ? (debugLayers && debugLayers[type]) : null;
+    ctx.tempArr = (type === 'tempSummer' || type === 'tempWinter') ? (debugLayers && debugLayers[type]) : null;
+    ctx.contArr = type === 'continentality' ? (debugLayers && debugLayers.continentality) : null;
+    ctx.tempContArr = type === 'tempContinentality' ? (debugLayers && debugLayers.tempContinentality) : null;
+
+    const special = type === 'color' || type === 'heightmap' || type === 'landheightmap' ||
+        type === 'landmask' || type === 'biome' || type === 'koppen' ||
+        type === 'precipSummer' || type === 'precipWinter' ||
+        type === 'rainShadowSummer' || type === 'rainShadowWinter' ||
+        type === 'tempSummer' || type === 'tempWinter' ||
+        type === 'continentality' || type === 'tempContinentality' ||
+        type === 'oceanCurrentSummer' || type === 'oceanCurrentWinter';
+
+    if (!special && debugLayers && debugLayers[type]) {
+        ctx.dbgArr = debugLayers[type];
+        for (let r = 0; r < mesh.numRegions; r++) {
+            if (ctx.dbgArr[r] < ctx.dbgMin) ctx.dbgMin = ctx.dbgArr[r];
+            if (ctx.dbgArr[r] > ctx.dbgMax) ctx.dbgMax = ctx.dbgArr[r];
+        }
+    }
+    return ctx;
+}
+
+function exportRegionColor(ctx, br) {
+    const type = ctx.type;
+    if (type === 'landmask') return landMaskColor(ctx.r_elevation[br]);
+    if (type === 'landheightmap') return landHeightmapColor(ctx.r_elevation[br]);
+    if (type === 'heightmap') return heightmapColor(ctx.r_elevation[br]);
+    if (type === 'biome' && ctx.biomeSmoothed) {
+        return [ctx.biomeSmoothed[br * 3], ctx.biomeSmoothed[br * 3 + 1], ctx.biomeSmoothed[br * 3 + 2]];
+    }
+    if (type === 'koppen' && ctx.koppenArr) return koppenColor(ctx.koppenArr[br]);
+    if ((type === 'precipSummer' || type === 'precipWinter') && ctx.precipArr) return precipitationColor(ctx.precipArr[br]);
+    if ((type === 'rainShadowSummer' || type === 'rainShadowWinter') && ctx.rainShadowArr) return rainShadowColor(ctx.rainShadowArr[br]);
+    if ((type === 'tempSummer' || type === 'tempWinter') && ctx.tempArr) return temperatureColor(ctx.tempArr[br]);
+    if (type === 'continentality' && ctx.contArr) return continentalityColor(ctx.contArr[br]);
+    if (type === 'tempContinentality' && ctx.tempContArr) return tempContinentalityColor(ctx.tempContArr[br]);
+    if ((type === 'oceanCurrentSummer' || type === 'oceanCurrentWinter') && ctx.oceanWarmth && ctx.oceanSpeed) {
+        return oceanCurrentColor(ctx.oceanWarmth[br], ctx.oceanSpeed[br], ctx.r_elevation[br] <= 0);
+    }
+    if (type === 'oceanCurrentSummer' || type === 'oceanCurrentWinter') return [0.5, 0, 0.5];
+    if (ctx.dbgArr) return debugValueToColor(ctx.dbgArr[br], ctx.dbgMin, ctx.dbgMax);
+    return elevationToColor(ctx.r_elevation[br]);
+}
+
+// Batch export — builds geometry once, recolors per type. Set download:false
+// to collect texture files for a ZIP bundle instead of clicking each PNG.
+export async function exportMapBatch(types, width, onProgress, options = {}) {
+    if (!state.curData) return [];
 
     await new Promise(r => setTimeout(r, 50));
 
@@ -2199,8 +2283,10 @@ export async function exportMapBatch(types, width, onProgress) {
     const { numSides, numTriangles } = mesh;
     const PI = Math.PI;
     const sx = 2 / PI;
+    const download = options.download !== false;
+    const pathPrefix = options.pathPrefix || '';
+    const files = [];
 
-    // Precompute averaged elevation at each triangle center for smooth heightmap exports
     const t_elev = new Float32Array(numTriangles);
     const tris = mesh.triangles;
     for (let t = 0; t < numTriangles; t++) {
@@ -2208,30 +2294,24 @@ export async function exportMapBatch(types, width, onProgress) {
         t_elev[t] = (r_elevation[tris[s0]] + r_elevation[tris[s0 + 1]] + r_elevation[tris[s0 + 2]]) / 3;
     }
 
-    // Build positions once and record per-triangle vertex topology.
-    // Positions are reused across all export types — only colors change.
     const posArr = new Float32Array(numSides * 18);
-    const triRegions = new Uint32Array(numSides * 2); // max 2 tris per side (wrapping)
-    const triInnerT = new Uint32Array(numSides * 2);  // inner triangle index per output tri
-    const triOuterT = new Uint32Array(numSides * 2);  // outer triangle index per output tri
+    const triRegions = new Uint32Array(numSides * 2);
+    const triInnerT = new Uint32Array(numSides * 2);
+    const triOuterT = new Uint32Array(numSides * 2);
     let triCount = 0;
 
     for (let s = 0; s < numSides; s++) {
         const it = mesh.s_inner_t(s);
         const ot = mesh.s_outer_t(s);
         const br = mesh.s_begin_r(s);
-
         const x0 = t_xyz[3*it], y0 = t_xyz[3*it+1], z0 = t_xyz[3*it+2];
         const x1 = t_xyz[3*ot], y1 = t_xyz[3*ot+1], z1 = t_xyz[3*ot+2];
         const x2 = r_xyz[3*br], y2 = r_xyz[3*br+1], z2 = r_xyz[3*br+2];
-
         let lon0 = Math.atan2(x0, z0), lat0 = Math.asin(Math.max(-1, Math.min(1, y0)));
         let lon1 = Math.atan2(x1, z1), lat1 = Math.asin(Math.max(-1, Math.min(1, y1)));
         let lon2 = Math.atan2(x2, z2), lat2 = Math.asin(Math.max(-1, Math.min(1, y2)));
-
         const clx = (v) => Math.max(-2, Math.min(2, v));
         const cly = (v) => Math.max(-1, Math.min(1, v));
-
         const maxLon = Math.max(lon0, lon1, lon2);
         const minLon = Math.min(lon0, lon1, lon2);
         const wraps = (maxLon - minLon) > PI;
@@ -2242,21 +2322,21 @@ export async function exportMapBatch(types, width, onProgress) {
             if (lon2 < 0) lon2 += 2 * PI;
 
             let off = triCount * 9;
-            posArr[off]   = clx(lon0*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
+            posArr[off] = clx(lon0*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
             posArr[off+3] = clx(lon1*sx); posArr[off+4] = cly(lat1*sx); posArr[off+5] = 0;
             posArr[off+6] = clx(lon2*sx); posArr[off+7] = cly(lat2*sx); posArr[off+8] = 0;
             triRegions[triCount] = br; triInnerT[triCount] = it; triOuterT[triCount] = ot;
             triCount++;
 
             off = triCount * 9;
-            posArr[off]   = clx((lon0-2*PI)*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
+            posArr[off] = clx((lon0-2*PI)*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
             posArr[off+3] = clx((lon1-2*PI)*sx); posArr[off+4] = cly(lat1*sx); posArr[off+5] = 0;
             posArr[off+6] = clx((lon2-2*PI)*sx); posArr[off+7] = cly(lat2*sx); posArr[off+8] = 0;
             triRegions[triCount] = br; triInnerT[triCount] = it; triOuterT[triCount] = ot;
             triCount++;
         } else {
             const off = triCount * 9;
-            posArr[off]   = clx(lon0*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
+            posArr[off] = clx(lon0*sx); posArr[off+1] = cly(lat0*sx); posArr[off+2] = 0;
             posArr[off+3] = clx(lon1*sx); posArr[off+4] = cly(lat1*sx); posArr[off+5] = 0;
             posArr[off+6] = clx(lon2*sx); posArr[off+7] = cly(lat2*sx); posArr[off+8] = 0;
             triRegions[triCount] = br; triInnerT[triCount] = it; triOuterT[triCount] = ot;
@@ -2264,13 +2344,8 @@ export async function exportMapBatch(types, width, onProgress) {
         }
     }
 
-    // Trim position array to actual triangle count
     const posData = new Float32Array(posArr.buffer, 0, triCount * 9);
-
     const offScene = new THREE.Scene();
-
-    // Tiled rendering setup (shared across all types).
-    // Cap at 2048 to keep render-target + readback + ImageData under ~48 MB per tile.
     const maxTex = renderer.capabilities.maxTextureSize;
     const MAX_TILE = 2048;
     const tileW = Math.min(width, maxTex, MAX_TILE);
@@ -2278,38 +2353,29 @@ export async function exportMapBatch(types, width, onProgress) {
     const tilesX = Math.ceil(width / tileW);
     const tilesY = Math.ceil(height / tileH);
     const totalTiles = tilesX * tilesY;
-
-    const code = location.hash.replace(/^#/, '').trim() || (state.curData ? state.curData.seed : '');
+    const code = currentExportSeed();
     const total = types.length;
-
-    // Pre-allocate pixel readback buffer (reused across all tiles and 8-bit types)
     const pixelBuf = new Uint8Array(tileW * tileH * 4);
     const floatBuf = new Float32Array(tileW * tileH * 4);
-
-    // Single canvas reused across 8-bit export types (avoids repeated bitmap allocation)
     const cvs = document.createElement('canvas');
     cvs.width = width;
     cvs.height = height;
     const ctx = cvs.getContext('2d');
 
     for (let ti = 0; ti < total; ti++) {
-        const { type, label } = types[ti];
-        const isBW = type === 'heightmap' || type === 'landheightmap' || type === 'landmask';
-        const is16Bit = type === 'heightmap' || type === 'landheightmap';
+        const { type, label = type } = types[ti];
+        const isBW = isBWExportType(type);
+        const is16Bit = is16BitExportType(type);
+        const colorCtx = makeExportColorContext(type, mesh, r_elevation, debugLayers, biomeSmoothed);
         offScene.background = isBW ? new THREE.Color(0x000000) : new THREE.Color(0x1a1a2e);
-
-        // 16-bit heightmaps write to a Uint16Array instead of the canvas
         let img16;
         if (is16Bit) img16 = new Uint16Array(width * height);
 
-        // Build fresh color array for this type
         const colData = new Float32Array(triCount * 9);
         for (let i = 0; i < triCount; i++) {
             const br = triRegions[i];
             const off = i * 9;
-
             if (is16Bit) {
-                // Smooth heightmap: triangle-center vertices use averaged elevation
                 const colorFn = type === 'landheightmap' ? landHeightmapColor : heightmapColor;
                 const v0 = colorFn(t_elev[triInnerT[i]])[0];
                 const v1 = colorFn(t_elev[triOuterT[i]])[0];
@@ -2318,24 +2384,13 @@ export async function exportMapBatch(types, width, onProgress) {
                 colData[off+3] = colData[off+4] = colData[off+5] = v1;
                 colData[off+6] = colData[off+7] = colData[off+8] = v2;
             } else {
-                let cr, cg, cb;
-                if (type === 'landmask') {
-                    [cr, cg, cb] = landMaskColor(r_elevation[br]);
-                } else if (type === 'biome' && biomeSmoothed) {
-                    cr = biomeSmoothed[br * 3]; cg = biomeSmoothed[br * 3 + 1]; cb = biomeSmoothed[br * 3 + 2];
-                } else if (type === 'koppen' && koppenArr) {
-                    [cr, cg, cb] = koppenColor(koppenArr[br]);
-                } else {
-                    [cr, cg, cb] = elevationToColor(r_elevation[br]);
-                }
+                const [cr, cg, cb] = exportRegionColor(colorCtx, br);
                 colData[off] = colData[off+3] = colData[off+6] = cr;
                 colData[off+1] = colData[off+4] = colData[off+7] = cg;
                 colData[off+2] = colData[off+5] = colData[off+8] = cb;
             }
         }
 
-        // Fresh geometry + mesh per type — avoids stale GPU buffer issues
-        // when the same renderer interleaves with the main animation loop.
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(posData, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(colData, 3));
@@ -2343,7 +2398,6 @@ export async function exportMapBatch(types, width, onProgress) {
         const mapMesh = new THREE.Mesh(geo, mat);
         offScene.add(mapMesh);
 
-        // Render tiles
         let tilesDone = 0;
         for (let ty = 0; ty < tilesY; ty++) {
             for (let tx = 0; tx < tilesX; tx++) {
@@ -2351,12 +2405,10 @@ export async function exportMapBatch(types, width, onProgress) {
                 const py0 = ty * tileH;
                 const pw = Math.min(tileW, width - px0);
                 const ph = Math.min(tileH, height - py0);
-
-                const left   = -2 + 4 * px0 / width;
-                const right  = -2 + 4 * (px0 + pw) / width;
-                const top    =  1 - 2 * py0 / height;
-                const bottom =  1 - 2 * (py0 + ph) / height;
-
+                const left = -2 + 4 * px0 / width;
+                const right = -2 + 4 * (px0 + pw) / width;
+                const top = 1 - 2 * py0 / height;
+                const bottom = 1 - 2 * (py0 + ph) / height;
                 const cam = new THREE.OrthographicCamera(left, right, top, bottom, 0.1, 10);
                 cam.position.set(0, 0, 5);
                 cam.lookAt(0, 0, 0);
@@ -2368,7 +2420,6 @@ export async function exportMapBatch(types, width, onProgress) {
                     renderer.setRenderTarget(renderTarget);
                     renderer.render(offScene, cam);
                     renderer.outputColorSpace = prevCS;
-
                     renderer.readRenderTargetPixels(renderTarget, 0, 0, pw, ph, floatBuf);
                     renderer.setRenderTarget(null);
                     renderTarget.dispose();
@@ -2385,7 +2436,6 @@ export async function exportMapBatch(types, width, onProgress) {
                     const renderTarget = new THREE.WebGLRenderTarget(pw, ph);
                     renderer.setRenderTarget(renderTarget);
                     renderer.render(offScene, cam);
-
                     renderer.readRenderTargetPixels(renderTarget, 0, 0, pw, ph, pixelBuf);
                     renderer.setRenderTarget(null);
                     renderTarget.dispose();
@@ -2415,45 +2465,291 @@ export async function exportMapBatch(types, width, onProgress) {
             }
         }
 
-        // Free GPU resources before PNG encode
         offScene.remove(mapMesh);
         geo.dispose();
         mat.dispose();
-
-        // Encode & download
         if (onProgress) onProgress(85, `正在导出 ${label} (${ti+1}/${total})：编码 PNG...`);
         await new Promise(r => setTimeout(r, 0));
 
         const filename = exportFilename(type, code);
+        let blob;
         if (is16Bit) {
-            const blob = await encode16BitGrayscalePNG(width, height, img16);
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            blob = await encode16BitGrayscalePNG(width, height, img16);
         } else {
-            await new Promise(resolve => {
-                cvs.toBlob(blob => {
-                    if (blob) {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
-                        a.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 5000);
-                    }
-                    resolve();
-                }, 'image/png');
-            });
+            blob = await new Promise(resolve => cvs.toBlob(resolve, 'image/png'));
         }
 
-        // Pause between exports to let the browser reclaim memory
+        if (blob) {
+            if (download) {
+                downloadBlob(filename, blob);
+            } else {
+                files.push({ path: pathPrefix + filename, data: blob, compress: false });
+            }
+        }
+
         await new Promise(r => setTimeout(r, 100));
     }
 
-    // Release canvas bitmap after all exports
     cvs.width = 0;
     cvs.height = 0;
+    return files;
+}
+
+function modelTextureUri(seed) {
+    return `../textures/${exportFilename('color', seed)}`;
+}
+
+function getPlanetModelData() {
+    if (!state.planetMesh && state.curData) buildMesh();
+    const posAttr = state.planetMesh && state.planetMesh.geometry.getAttribute('position');
+    if (!posAttr) return null;
+
+    const positions = new Float32Array(posAttr.array);
+    const vertexCount = posAttr.count;
+    const normals = new Float32Array(vertexCount * 3);
+    const uvs = new Float32Array(vertexCount * 2);
+    const colors = new Uint8Array(vertexCount * 3);
+    const { mesh, r_elevation } = state.curData;
+    const PI = Math.PI;
+
+    for (let i = 0; i < vertexCount; i++) {
+        const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
+        const len = Math.hypot(x, y, z) || 1;
+        const nx = x / len, ny = y / len, nz = z / len;
+        normals[i * 3] = nx; normals[i * 3 + 1] = ny; normals[i * 3 + 2] = nz;
+        uvs[i * 2] = 0.5 + Math.atan2(nx, nz) / (2 * PI);
+        uvs[i * 2 + 1] = 0.5 - Math.asin(Math.max(-1, Math.min(1, ny))) / PI;
+    }
+
+    for (let i = 0; i < vertexCount; i += 3) {
+        const u0 = uvs[i * 2], u1 = uvs[(i + 1) * 2], u2 = uvs[(i + 2) * 2];
+        if (Math.max(u0, u1, u2) - Math.min(u0, u1, u2) > 0.5) {
+            for (let j = 0; j < 3; j++) {
+                const k = (i + j) * 2;
+                if (uvs[k] < 0.5) uvs[k] += 1;
+            }
+        }
+    }
+
+    for (let s = 0; s < mesh.numSides; s++) {
+        const br = mesh.s_begin_r(s);
+        const [r, g, b] = elevationToColor(r_elevation[br]);
+        for (let j = 0; j < 3; j++) {
+            const off = (s * 3 + j) * 3;
+            colors[off] = Math.round(r * 255);
+            colors[off + 1] = Math.round(g * 255);
+            colors[off + 2] = Math.round(b * 255);
+        }
+    }
+
+    return { positions, normals, uvs, colors, vertexCount, faceCount: vertexCount / 3 };
+}
+
+function fmt(v) {
+    return Number(v).toFixed(6).replace(/\.?0+$/, '');
+}
+
+function exportObjModel(seed, textureUri) {
+    const data = getPlanetModelData();
+    if (!data) return [];
+    const base = `orogen-world-${sanitizeFilePart(seed)}`;
+    const obj = [
+        `mtllib ${base}.mtl`,
+        'o World_Orogen',
+        'usemtl terrain',
+    ];
+    for (let i = 0; i < data.vertexCount; i++) {
+        obj.push(`v ${fmt(data.positions[i*3])} ${fmt(data.positions[i*3+1])} ${fmt(data.positions[i*3+2])}`);
+    }
+    for (let i = 0; i < data.vertexCount; i++) {
+        obj.push(`vt ${fmt(data.uvs[i*2])} ${fmt(data.uvs[i*2+1])}`);
+    }
+    for (let i = 0; i < data.vertexCount; i++) {
+        obj.push(`vn ${fmt(data.normals[i*3])} ${fmt(data.normals[i*3+1])} ${fmt(data.normals[i*3+2])}`);
+    }
+    for (let i = 0; i < data.vertexCount; i += 3) {
+        obj.push(`f ${i+1}/${i+1}/${i+1} ${i+2}/${i+2}/${i+2} ${i+3}/${i+3}/${i+3}`);
+    }
+
+    const mtl = [
+        'newmtl terrain',
+        'Ka 1 1 1',
+        'Kd 1 1 1',
+        'Ks 0 0 0',
+        'd 1',
+        `map_Kd ${textureUri}`,
+        '',
+    ].join('\n');
+
+    return [
+        { path: `models/${base}.obj`, data: obj.join('\n') + '\n' },
+        { path: `models/${base}.mtl`, data: mtl },
+    ];
+}
+
+function bytesToBase64(bytes) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+}
+
+function appendAligned(parts, bytes) {
+    let offset = parts.reduce((sum, p) => sum + p.length, 0);
+    const pad = (4 - (offset % 4)) % 4;
+    if (pad) {
+        parts.push(new Uint8Array(pad));
+        offset += pad;
+    }
+    parts.push(bytes);
+    return offset;
+}
+
+function exportPlyModel(seed) {
+    const data = getPlanetModelData();
+    if (!data) return [];
+    const base = `orogen-world-${sanitizeFilePart(seed)}`;
+    const lines = [
+        'ply',
+        'format ascii 1.0',
+        'comment Generated by World Orogen',
+        `element vertex ${data.vertexCount}`,
+        'property float x',
+        'property float y',
+        'property float z',
+        'property uchar red',
+        'property uchar green',
+        'property uchar blue',
+        `element face ${data.faceCount}`,
+        'property list uchar int vertex_indices',
+        'end_header',
+    ];
+    for (let i = 0; i < data.vertexCount; i++) {
+        lines.push(`${fmt(data.positions[i*3])} ${fmt(data.positions[i*3+1])} ${fmt(data.positions[i*3+2])} ${data.colors[i*3]} ${data.colors[i*3+1]} ${data.colors[i*3+2]}`);
+    }
+    for (let i = 0; i < data.vertexCount; i += 3) {
+        lines.push(`3 ${i} ${i + 1} ${i + 2}`);
+    }
+    return [{ path: `models/${base}.ply`, data: lines.join('\n') + '\n' }];
+}
+
+async function exportGltfModelAsync(seed, textureUri) {
+    const data = getPlanetModelData();
+    if (!data) return [];
+    const base = `orogen-world-${sanitizeFilePart(seed)}`;
+    const parts = [];
+    const posBytes = new Uint8Array(data.positions.buffer);
+    const normBytes = new Uint8Array(data.normals.buffer);
+    const uvBytes = new Uint8Array(data.uvs.buffer);
+    const posOffset = appendAligned(parts, posBytes);
+    const normOffset = appendAligned(parts, normBytes);
+    const uvOffset = appendAligned(parts, uvBytes);
+    const blob = new Blob(parts);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < data.vertexCount; i++) {
+        for (let c = 0; c < 3; c++) {
+            const v = data.positions[i * 3 + c];
+            if (v < min[c]) min[c] = v;
+            if (v > max[c]) max[c] = v;
+        }
+    }
+
+    const gltf = {
+        asset: { version: '2.0', generator: 'World Orogen' },
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        nodes: [{ mesh: 0, name: 'World Orogen Terrain' }],
+        meshes: [{
+            name: 'World Orogen Terrain',
+            primitives: [{
+                attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 },
+                material: 0,
+                mode: 4,
+            }],
+        }],
+        materials: [{
+            name: 'terrain',
+            pbrMetallicRoughness: {
+                baseColorTexture: { index: 0 },
+                metallicFactor: 0,
+                roughnessFactor: 1,
+            },
+            doubleSided: true,
+        }],
+        images: [{ uri: textureUri }],
+        textures: [{ source: 0, sampler: 0 }],
+        samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }],
+        buffers: [{
+            uri: `data:application/octet-stream;base64,${bytesToBase64(bytes)}`,
+            byteLength: bytes.length,
+        }],
+        bufferViews: [
+            { buffer: 0, byteOffset: posOffset, byteLength: posBytes.length, target: 34962 },
+            { buffer: 0, byteOffset: normOffset, byteLength: normBytes.length, target: 34962 },
+            { buffer: 0, byteOffset: uvOffset, byteLength: uvBytes.length, target: 34962 },
+        ],
+        accessors: [
+            { bufferView: 0, componentType: 5126, count: data.vertexCount, type: 'VEC3', min, max },
+            { bufferView: 1, componentType: 5126, count: data.vertexCount, type: 'VEC3' },
+            { bufferView: 2, componentType: 5126, count: data.vertexCount, type: 'VEC2' },
+        ],
+    };
+    return [{ path: `models/${base}.gltf`, data: JSON.stringify(gltf, null, 2) }];
+}
+
+async function exportPlanetModelFiles(format, seed, textureUri) {
+    if (format === 'obj') return exportObjModel(seed, textureUri);
+    if (format === 'ply') return exportPlyModel(seed);
+    if (format === 'gltf') return exportGltfModelAsync(seed, textureUri);
+    return [];
+}
+
+export async function exportWorldBundle({ width, textureTypes, modelFormat = '' }, onProgress) {
+    if (!state.curData) return null;
+    const seed = currentExportSeed();
+    const selected = [];
+    const seen = new Set();
+    for (const item of textureTypes || []) {
+        if (!item || !item.type || seen.has(item.type)) continue;
+        selected.push(item);
+        seen.add(item.type);
+    }
+
+    if (onProgress) onProgress(0, '正在准备世界包...');
+    const textureFiles = await exportMapBatch(selected, width, (pct, label) => {
+        if (onProgress) onProgress(pct * 0.82, label);
+    }, { download: false, pathPrefix: 'textures/' });
+
+    const files = [...textureFiles];
+    if (modelFormat) {
+        if (onProgress) onProgress(84, '正在生成球体模型...');
+        files.push(...await exportPlanetModelFiles(modelFormat, seed, modelTextureUri(seed)));
+    }
+
+    const manifestPath = 'manifest.json';
+    files.push({
+        path: manifestPath,
+        data: JSON.stringify({
+            generator: 'World Orogen',
+            seed,
+            textureWidth: width,
+            textureHeight: width / 2,
+            textures: textureFiles.map(f => f.path),
+            modelFormat: modelFormat || null,
+            files: [...files.map(f => f.path), manifestPath],
+        }, null, 2),
+    });
+
+    if (onProgress) onProgress(90, '正在生成 ZIP 压缩包...');
+    const zip = await createZipBlob(files, (pct, label) => {
+        if (onProgress) onProgress(90 + pct * 0.09, label);
+    });
+    const filename = `orogen-world-${seed}.zip`;
+    downloadBlob(filename, zip);
+    if (onProgress) onProgress(100, '世界包已导出');
+    return { filename, files: files.map(f => f.path) };
 }
