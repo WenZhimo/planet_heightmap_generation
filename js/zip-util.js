@@ -1,4 +1,4 @@
-// Minimal ZIP writer for browser-side export bundles.
+// Minimal ZIP/ZIP64 writer for browser-side export bundles.
 
 const UTF8 = new TextEncoder();
 
@@ -146,31 +146,6 @@ async function readStoredPayload(data, fileIndex, fileCount, name, onProgress) {
     return { payloadParts, size, crc: finishCrc32(crc) };
 }
 
-async function readPayloadBytes(data, fileIndex, fileCount, name, onProgress) {
-    const payload = await readStoredPayload(data, fileIndex, fileCount, name, onProgress);
-    return { bytes: concat(payload.payloadParts), size: payload.size, crc: payload.crc };
-}
-
-async function deflateRaw(bytes) {
-    if (typeof CompressionStream !== 'function') return null;
-    try {
-        const stream = new CompressionStream('deflate-raw');
-        const writer = stream.writable.getWriter();
-        await writer.write(bytes);
-        await writer.close();
-        return new Uint8Array(await new Response(stream.readable).arrayBuffer());
-    } catch (_) {
-        return null;
-    }
-}
-
-function shouldCompress(file) {
-    if (file.compress === false) return false;
-    if (typeof Blob !== 'undefined' && file.data instanceof Blob) return false;
-    if (/\.(png|obj|ply|gltf)$/i.test(file.path)) return false;
-    return true;
-}
-
 export async function createZipBlob(files, onProgress) {
     const locals = [];
     const centrals = [];
@@ -186,27 +161,13 @@ export async function createZipBlob(files, onProgress) {
         }
         zipProgress(onProgress, i, fileCount, 0, `正在读取 ${name}`);
 
-        const compressCandidate = shouldCompress(file);
-        const raw = compressCandidate
-            ? await readPayloadBytes(file.data, i, fileCount, name, onProgress)
-            : await readStoredPayload(file.data, i, fileCount, name, onProgress);
-
-        let payloadParts = raw.payloadParts || [raw.bytes];
-        let payloadSize = raw.size;
-        let compressed = null;
-        if (compressCandidate) {
-            zipProgress(onProgress, i, fileCount, 0.92, `正在压缩 ${name}`);
-            compressed = await deflateRaw(raw.bytes);
-        }
-        const useCompressed = compressed && compressed.length < raw.size;
-        if (useCompressed) {
-            payloadParts = [compressed];
-            payloadSize = compressed.length;
-        }
-        const method = useCompressed ? 8 : 0;
+        const raw = await readStoredPayload(file.data, i, fileCount, name, onProgress);
+        const payloadParts = raw.payloadParts;
+        const payloadSize = raw.size;
+        const method = 0;
         const { dosTime, dosDate } = dosDateTime(file.date);
         assertZipNumber(raw.size, `${name} source size`);
-        assertZipNumber(payloadSize, `${name} compressed size`);
+        assertZipNumber(payloadSize, `${name} stored size`);
         assertZipNumber(offset, `${name} offset`);
 
         const sizesNeedZip64 = needsZip64(raw.size) || needsZip64(payloadSize);

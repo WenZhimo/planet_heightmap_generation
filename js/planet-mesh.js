@@ -2744,7 +2744,7 @@ export async function exportWorldBundle({ width, textureTypes, modelFormat = '' 
         }, null, 2),
     });
 
-    if (onProgress) onProgress(90, '正在生成 ZIP 压缩包...');
+    if (onProgress) onProgress(90, '正在生成 ZIP 素材包...');
     const zip = await createZipBlob(files, (pct, label) => {
         if (onProgress) onProgress(90 + pct * 0.09, label);
     });
