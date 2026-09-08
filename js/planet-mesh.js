@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
 import { KOPPEN_CLASSES } from './koppen.js';
+import { getMapProjectionParams, projectMapDirectionFromXyz, projectMapSegmentFromLonLat, projectMapSegmentFromXyz, projectMapTriangleFromXyz } from './map-projection.js';
 
 // Clipping planes for map wrap — keep everything within x ∈ [-2, 2]
 renderer.localClippingEnabled = true;
@@ -298,7 +299,7 @@ export function computePlateColors(plateSeeds, plateIsOcean) {
     }
 }
 
-// Build equirectangular map mesh.
+// Build projected map mesh.
 export function buildMapMesh() {
     if (state.mapMesh) { scene.remove(state.mapMesh); state.mapMesh.geometry.dispose(); state.mapMesh.material.dispose(); state.mapMesh = null; }
     if (!state.curData || !state.mapMode) return;
@@ -341,16 +342,7 @@ export function buildMapMesh() {
     }
 
     const { numSides } = mesh;
-    const PI = Math.PI;
-    const centerLon = state.mapCenterLon || 0;
-
-    // Offset longitude by center meridian and wrap to [-PI, PI]
-    function wrapLon(lon) {
-        let l = lon - centerLon;
-        if (l > PI) l -= 2 * PI;
-        else if (l < -PI) l += 2 * PI;
-        return l;
-    }
+    const projectionParams = getMapProjectionParams();
 
     const biomeSmoothed = (isBiome && koppenArr) ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation) : null;
     const isSmooth = isHeightmap || isLandHeightmap;
@@ -424,48 +416,17 @@ export function buildMapMesh() {
         const x1 = t_xyz[3*ot], y1 = t_xyz[3*ot+1], z1 = t_xyz[3*ot+2];
         const x2 = r_xyz[3*br], y2 = r_xyz[3*br+1], z2 = r_xyz[3*br+2];
 
-        let lon0 = wrapLon(Math.atan2(x0, z0)), lat0 = Math.asin(Math.max(-1, Math.min(1, y0)));
-        let lon1 = wrapLon(Math.atan2(x1, z1)), lat1 = Math.asin(Math.max(-1, Math.min(1, y1)));
-        let lon2 = wrapLon(Math.atan2(x2, z2)), lat2 = Math.asin(Math.max(-1, Math.min(1, y2)));
+        const projectedTriangles = projectMapTriangleFromXyz([
+            [x0, y0, z0],
+            [x1, y1, z1],
+            [x2, y2, z2],
+        ], projectionParams);
 
-        const sx = 2 / PI;
-        const maxLon = Math.max(lon0, lon1, lon2);
-        const minLon = Math.min(lon0, lon1, lon2);
-        const wraps = (maxLon - minLon) > PI;
-
-        // Clamp projected coords to map bounds
-        const cx = (v) => Math.max(-2, Math.min(2, v));
-        const cy = (v) => Math.max(-1, Math.min(1, v));
-
-        if (wraps) {
-            if (lon0 < 0) lon0 += 2 * PI;
-            if (lon1 < 0) lon1 += 2 * PI;
-            if (lon2 < 0) lon2 += 2 * PI;
-
-            let off = triCount * 9;
-            posArr[off]   = cx(lon0*sx); posArr[off+1] = cy(lat0*sx); posArr[off+2] = 0;
-            posArr[off+3] = cx(lon1*sx); posArr[off+4] = cy(lat1*sx); posArr[off+5] = 0;
-            posArr[off+6] = cx(lon2*sx); posArr[off+7] = cy(lat2*sx); posArr[off+8] = 0;
-            colArr[off]=c0r; colArr[off+1]=c0g; colArr[off+2]=c0b;
-            colArr[off+3]=c1r; colArr[off+4]=c1g; colArr[off+5]=c1b;
-            colArr[off+6]=c2r; colArr[off+7]=c2g; colArr[off+8]=c2b;
-            faceToSide[triCount] = s;
-            triCount++;
-
-            off = triCount * 9;
-            posArr[off]   = cx((lon0-2*PI)*sx); posArr[off+1] = cy(lat0*sx); posArr[off+2] = 0;
-            posArr[off+3] = cx((lon1-2*PI)*sx); posArr[off+4] = cy(lat1*sx); posArr[off+5] = 0;
-            posArr[off+6] = cx((lon2-2*PI)*sx); posArr[off+7] = cy(lat2*sx); posArr[off+8] = 0;
-            colArr[off]=c0r; colArr[off+1]=c0g; colArr[off+2]=c0b;
-            colArr[off+3]=c1r; colArr[off+4]=c1g; colArr[off+5]=c1b;
-            colArr[off+6]=c2r; colArr[off+7]=c2g; colArr[off+8]=c2b;
-            faceToSide[triCount] = s;
-            triCount++;
-        } else {
+        for (const tri of projectedTriangles) {
             const off = triCount * 9;
-            posArr[off]   = cx(lon0*sx); posArr[off+1] = cy(lat0*sx); posArr[off+2] = 0;
-            posArr[off+3] = cx(lon1*sx); posArr[off+4] = cy(lat1*sx); posArr[off+5] = 0;
-            posArr[off+6] = cx(lon2*sx); posArr[off+7] = cy(lat2*sx); posArr[off+8] = 0;
+            posArr[off]   = tri[0].x; posArr[off+1] = tri[0].y; posArr[off+2] = 0;
+            posArr[off+3] = tri[1].x; posArr[off+4] = tri[1].y; posArr[off+5] = 0;
+            posArr[off+6] = tri[2].x; posArr[off+7] = tri[2].y; posArr[off+8] = 0;
             colArr[off]=c0r; colArr[off+1]=c0g; colArr[off+2]=c0b;
             colArr[off+3]=c1r; colArr[off+4]=c1g; colArr[off+5]=c1b;
             colArr[off+6]=c2r; colArr[off+7]=c2g; colArr[off+8]=c2b;
@@ -484,15 +445,10 @@ export function buildMapMesh() {
     const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: MAP_CLIP_PLANES });
     state.mapMesh = new THREE.Mesh(geo, mat);
     state.mapMesh.visible = state.mapMode;
-    state.mapMesh._builtCenterLon = state.mapCenterLon || 0;
     state.mapFaceToSide = faceToSide.subarray(0, triCount);
     state._mapHoverBackup = null;
     state._mapKoppenHoverBackup = null;
     state._mapPendingBackup = null;
-    // Wrap clones: children inherit parent visibility + transform
-    const cloneL = new THREE.Mesh(geo, mat); cloneL.position.x = -4;
-    const cloneR = new THREE.Mesh(geo, mat); cloneR.position.x = 4;
-    state.mapMesh.add(cloneL, cloneR);
     scene.add(state.mapMesh);
 
     updateSuperPlateBorders();
@@ -509,24 +465,35 @@ function buildMapGrid() {
     }
 
     const spacing = state.gridSpacing;
-    const sx = 2 / Math.PI;
     const Z = 0.001;
-    const PI = Math.PI;
-    const centerLonDeg = (state.mapCenterLon || 0) * 180 / PI;
+    const DEG = Math.PI / 180;
+    const params = getMapProjectionParams();
+    const latSamples = Math.max(36, Math.ceil(180 / Math.max(2.5, spacing)) * 2);
+    const lonSamples = Math.max(72, Math.ceil(360 / Math.max(2.5, spacing)) * 2);
     const positions = [];
 
+    function pushProjectedSegments(segments) {
+        for (const [p0, p1] of segments) {
+            positions.push(p0.x, p0.y, Z, p1.x, p1.y, Z);
+        }
+    }
+
     for (let deg = -90; deg <= 90; deg += spacing) {
-        const y = (deg * Math.PI / 180) * sx;
-        positions.push(-2, y, Z, 2, y, Z);
+        const lat = deg * DEG;
+        for (let i = 0; i < lonSamples; i++) {
+            const lon0 = (-180 + i * 360 / lonSamples) * DEG;
+            const lon1 = (-180 + (i + 1) * 360 / lonSamples) * DEG;
+            pushProjectedSegments(projectMapSegmentFromLonLat(lon0, lat, lon1, lat, params));
+        }
     }
 
     for (let deg = -180; deg <= 180; deg += spacing) {
-        let offsetDeg = deg - centerLonDeg;
-        // Wrap to [-180, 180]
-        if (offsetDeg > 180) offsetDeg -= 360;
-        else if (offsetDeg < -180) offsetDeg += 360;
-        const x = (offsetDeg * Math.PI / 180) * sx;
-        positions.push(x, -1, Z, x, 1, Z);
+        const lon = deg * DEG;
+        for (let i = 0; i < latSamples; i++) {
+            const lat0 = (-90 + i * 180 / latSamples) * DEG;
+            const lat1 = (-90 + (i + 1) * 180 / latSamples) * DEG;
+            pushProjectedSegments(projectMapSegmentFromLonLat(lon, lat0, lon, lat1, params));
+        }
     }
 
     const geo = new THREE.BufferGeometry();
@@ -534,10 +501,6 @@ function buildMapGrid() {
     const gridMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, clippingPlanes: MAP_CLIP_PLANES });
     state.mapGridMesh = new THREE.LineSegments(geo, gridMat);
     state.mapGridMesh.visible = state.mapMode && state.gridEnabled;
-    // Wrap clones for smooth longitude scrolling
-    const gCloneL = new THREE.LineSegments(geo, gridMat); gCloneL.position.x = -4;
-    const gCloneR = new THREE.LineSegments(geo, gridMat); gCloneR.position.x = 4;
-    state.mapGridMesh.add(gCloneL, gCloneR);
     scene.add(state.mapGridMesh);
 }
 
@@ -696,14 +659,7 @@ export function updateSuperPlateBorders() {
 
     // Map borders
     if (state.mapMode) {
-        const centerLon = state.mapCenterLon || 0;
-        function wrapLon(lon) {
-            let l = lon - centerLon;
-            if (l > PI) l -= 2 * PI;
-            else if (l < -PI) l += 2 * PI;
-            return l;
-        }
-        const sx = 2 / PI;
+        const params = getMapProjectionParams();
         const bps = [];
         for (let s = 0; s < numSides; s++) {
             const opp = mesh.halfedges[s];
@@ -712,12 +668,13 @@ export function updateSuperPlateBorders() {
                 const r2 = mesh.s_begin_r(opp);
                 if (spArr[r1] !== spArr[r2]) {
                     const it = mesh.s_inner_t(s), ot = mesh.s_outer_t(s);
-                    const lat1 = Math.asin(Math.max(-1, Math.min(1, t_xyz[3*it+1])));
-                    const lon1 = wrapLon(Math.atan2(t_xyz[3*it], t_xyz[3*it+2]));
-                    const lat2 = Math.asin(Math.max(-1, Math.min(1, t_xyz[3*ot+1])));
-                    const lon2 = wrapLon(Math.atan2(t_xyz[3*ot], t_xyz[3*ot+2]));
-                    if (Math.abs(lon1 - lon2) < PI * 0.5) {
-                        bps.push(lon1 * sx, lat1 * sx, 0.002, lon2 * sx, lat2 * sx, 0.002);
+                    const segs = projectMapSegmentFromXyz(
+                        [t_xyz[3*it], t_xyz[3*it+1], t_xyz[3*it+2]],
+                        [t_xyz[3*ot], t_xyz[3*ot+1], t_xyz[3*ot+2]],
+                        params
+                    );
+                    for (const [p0, p1] of segs) {
+                        bps.push(p0.x, p0.y, 0.002, p1.x, p1.y, 0.002);
                     }
                 }
             }
@@ -727,9 +684,6 @@ export function updateSuperPlateBorders() {
             bg.setAttribute('position', new THREE.Float32BufferAttribute(bps, 3));
             const bMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, clippingPlanes: MAP_CLIP_PLANES });
             state.mapSuperPlateBorderMesh = new THREE.LineSegments(bg, bMat);
-            const bcL = new THREE.LineSegments(bg, bMat); bcL.position.x = -4;
-            const bcR = new THREE.LineSegments(bg, bMat); bcR.position.x = 4;
-            state.mapSuperPlateBorderMesh.add(bcL, bcR);
             scene.add(state.mapSuperPlateBorderMesh);
         }
     }
@@ -1485,8 +1439,8 @@ export function buildWindArrows(season) {
 
     const PI = Math.PI;
     const DEG = PI / 180;
-    const sx = 2 / PI;
     const numRegions = mesh.numRegions;
+    const projectionParams = getMapProjectionParams();
 
     // ── Bin regions into a lat/lon grid for even geographic sampling ──
     const LAT_STEP = 3; // degrees
@@ -1607,16 +1561,30 @@ export function buildWindArrows(season) {
 
         // ── Map arrows: 2D with arrowhead ──
         {
-            let lon = Math.atan2(x, z) - (state.mapCenterLon || 0);
-            if (lon > PI) lon -= 2 * PI; else if (lon < -PI) lon += 2 * PI;
-            const lat = Math.asin(Math.max(-1, Math.min(1, y)));
-            const mx = lon * sx;
-            const my = lat * sx;
+            let ex = z, ey = 0, ez = -x;
+            const elen = Math.sqrt(ex * ex + ez * ez);
+            if (elen > 1e-10) { ex /= elen; ez /= elen; }
+            else { ex = 1; ez = 0; }
 
-            const norm = speed || 1;
+            let nx = y * ez - z * ey;
+            let ny = z * ex - x * ez;
+            let nz = x * ey - y * ex;
+            const nlen = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= nlen; ny /= nlen; nz /= nlen;
+
+            const dirX = we * ex + wn * nx;
+            const dirY = we * ey + wn * ny;
+            const dirZ = we * ez + wn * nz;
+            const dirLen = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ) || 1;
+            const mapDir = projectMapDirectionFromXyz(x, y, z, dirX / dirLen, dirY / dirLen, dirZ / dirLen, 0.035, projectionParams);
+            if (!mapDir) continue;
+
             const arrowLen = 0.006 + Math.min(0.012, speed * 0.025);
-            const dx = (we / norm) * arrowLen;
-            const dy = (wn / norm) * arrowLen;
+            const mapLen = Math.sqrt(mapDir.dx * mapDir.dx + mapDir.dy * mapDir.dy) || 1;
+            const dx = (mapDir.dx / mapLen) * arrowLen;
+            const dy = (mapDir.dy / mapLen) * arrowLen;
+            const mx = mapDir.x;
+            const my = mapDir.y;
             const tipX = mx + dx, tipY = my + dy;
 
             // Shaft
@@ -1695,15 +1663,14 @@ export function buildWindArrows(season) {
         igLines.visible = !state.mapMode;
         state.windArrowGroup.add(igLines);
 
-        // Map: polyline on equirectangular projection
+        // Map: polyline on the active projection
         const mPos = [];
         for (let i = 0; i < N; i++) {
             const j = (i + 1) % N;
-            const mx0 = itczLons[i] * sx, my0 = itczLats[i] * sx;
-            const mx1 = itczLons[j] * sx, my1 = itczLats[j] * sx;
-            // Skip segment that wraps across antimeridian
-            if (Math.abs(mx1 - mx0) > 1) continue;
-            mPos.push(mx0, my0, 0.003, mx1, my1, 0.003);
+            const segments = projectMapSegmentFromLonLat(itczLons[i], itczLats[i], itczLons[j], itczLats[j], projectionParams);
+            for (const [p0, p1] of segments) {
+                mPos.push(p0.x, p0.y, 0.003, p1.x, p1.y, 0.003);
+            }
         }
         const imGeo = new THREE.BufferGeometry();
         imGeo.setAttribute('position', new THREE.Float32BufferAttribute(mPos, 3));
@@ -1745,8 +1712,8 @@ export function buildOceanCurrentArrows(season) {
 
     const PI = Math.PI;
     const DEG = PI / 180;
-    const sx = 2 / PI;
     const numRegions = mesh.numRegions;
+    const projectionParams = getMapProjectionParams();
 
     // ── Bin regions into a lat/lon grid for even geographic sampling ──
     const LAT_STEP = 3;
@@ -1864,16 +1831,30 @@ export function buildOceanCurrentArrows(season) {
 
         // ── Map arrows: 2D with arrowhead ──
         {
-            let lon = Math.atan2(x, z) - (state.mapCenterLon || 0);
-            if (lon > PI) lon -= 2 * PI; else if (lon < -PI) lon += 2 * PI;
-            const lat = Math.asin(Math.max(-1, Math.min(1, y)));
-            const mx = lon * sx;
-            const my = lat * sx;
+            let ex = z, ey = 0, ez = -x;
+            const elen = Math.sqrt(ex * ex + ez * ez);
+            if (elen > 1e-10) { ex /= elen; ez /= elen; }
+            else { ex = 1; ez = 0; }
 
-            const rawSpeed = Math.sqrt(ce * ce + cn * cn) || 1;
+            let nx = y * ez - z * ey;
+            let ny = z * ex - x * ez;
+            let nz = x * ey - y * ex;
+            const nlen = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= nlen; ny /= nlen; nz /= nlen;
+
+            const dirX = ce * ex + cn * nx;
+            const dirY = ce * ey + cn * ny;
+            const dirZ = ce * ez + cn * nz;
+            const dirLen = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ) || 1;
+            const mapDir = projectMapDirectionFromXyz(x, y, z, dirX / dirLen, dirY / dirLen, dirZ / dirLen, 0.035, projectionParams);
+            if (!mapDir) continue;
+
             const arrowLen = 0.006 + Math.min(0.014, speed * 0.025);
-            const dx = (ce / rawSpeed) * arrowLen;
-            const dy = (cn / rawSpeed) * arrowLen;
+            const mapLen = Math.sqrt(mapDir.dx * mapDir.dx + mapDir.dy * mapDir.dy) || 1;
+            const dx = (mapDir.dx / mapLen) * arrowLen;
+            const dy = (mapDir.dy / mapLen) * arrowLen;
+            const mx = mapDir.x;
+            const my = mapDir.y;
             const tipX = mx + dx, tipY = my + dy;
 
             mapPositions.push(mx, my, 0.002, tipX, tipY, 0.002);

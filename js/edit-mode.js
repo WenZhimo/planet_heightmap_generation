@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { updateHoverHighlight, updateMapHoverHighlight, updatePendingHighlight, updateMapPendingHighlight } from './planet-mesh.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevToHeightKm } from './color-map.js';
+import { mapPointToXyz } from './map-projection.js';
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -59,7 +60,7 @@ function getHitInfoGlobe(event) {
     return findNearestRegion(hx / len, hy / len, hz / len);
 }
 
-/** Map view: unproject mouse → map plane → inverse equirect → nearest region. */
+/** Map view: unproject mouse → active map projection → nearest region. */
 function getHitInfoMap(event) {
     if (!state.mapMesh) return null;
     const rect = canvas.getBoundingClientRect();
@@ -74,22 +75,8 @@ function getHitInfoMap(event) {
     const wx = o.x + t * d.x;
     const wy = o.y + t * d.y;
 
-    // Inverse equirectangular: map coords → lon/lat → unit sphere xyz
-    const PI = Math.PI;
-    const sx = 2 / PI;
-    let lon = wx / sx + (state.mapCenterLon || 0);
-    const lat = wy / sx;
-    if (lat < -PI / 2 || lat > PI / 2) return null;
-    // Wrap lon back to [-PI, PI]
-    if (lon > PI) lon -= 2 * PI;
-    else if (lon < -PI) lon += 2 * PI;
-
-    const cosLat = Math.cos(lat);
-    return findNearestRegion(
-        cosLat * Math.sin(lon),
-        Math.sin(lat),
-        cosLat * Math.cos(lon)
-    );
+    const xyz = mapPointToXyz(wx, wy);
+    return xyz ? findNearestRegion(xyz[0], xyz[1], xyz[2]) : null;
 }
 
 function getHitInfo(event) {

@@ -146,9 +146,24 @@
                         <option value="map">平面地图</option>
                     </select>
                 </div>
+                <div class="cg" id="mapProjectionGroup" style="display:none">
+                    <label>地图投影</label>
+                    <select id="sMapProjection">
+                        <option value="equirectangular">等距柱状</option>
+                        <option value="mercator">墨卡托</option>
+                        <option value="naturalEarth1">自然地球</option>
+                        <option value="equalEarth">Equal Earth 等面积</option>
+                        <option value="orthographic">正射半球</option>
+                        <option value="azimuthalEqualArea">方位等面积</option>
+                    </select>
+                </div>
                 <div class="cg" id="mapCenterLonGroup" style="display:none">
                     <label>中心经度 <span class="v" id="vMapCenterLon">0&deg;</span></label>
                     <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="5">
+                </div>
+                <div class="cg" id="mapCenterLatGroup" style="display:none">
+                    <label>中心纬度 <span class="v" id="vMapCenterLat">0&deg;</span></label>
+                    <input type="range" id="sMapCenterLat" min="-85" max="85" value="0" step="5">
                 </div>
                 <div class="map-tabs" id="mapTabs">
                     <button class="map-tab active" data-layer="">地形</button>

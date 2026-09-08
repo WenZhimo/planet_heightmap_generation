@@ -11,6 +11,7 @@ import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, reb
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, mapPointToXyz } from './map-projection.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -531,43 +532,69 @@ document.getElementById('gridSpacing').addEventListener('change', (e) => {
     rebuildGrids();
 });
 
-// Map center longitude
+// Flat map projection controls
+const mapProjectionGroup = document.getElementById('mapProjectionGroup');
+const sMapProjection = document.getElementById('sMapProjection');
 const mapCenterLonGroup = document.getElementById('mapCenterLonGroup');
 const sMapCenterLon = document.getElementById('sMapCenterLon');
 const vMapCenterLon = document.getElementById('vMapCenterLon');
+const mapCenterLatGroup = document.getElementById('mapCenterLatGroup');
+const sMapCenterLat = document.getElementById('sMapCenterLat');
+const vMapCenterLat = document.getElementById('vMapCenterLat');
+let mapProjectionRefreshTimer = 0;
+
+function rebuildMapProjectionView() {
+    if (!state.mapMode) return;
+    buildMapMesh();
+    const layer = state.debugLayer;
+    const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
+                   layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
+    const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
+    if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
+    if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+    updateViewHint();
+}
+
+function scheduleMapProjectionRefresh() {
+    if (!state.mapMode) return;
+    if (mapProjectionRefreshTimer) clearTimeout(mapProjectionRefreshTimer);
+    mapProjectionRefreshTimer = setTimeout(() => {
+        mapProjectionRefreshTimer = 0;
+        rebuildMapProjectionView();
+    }, 80);
+}
+
+if (sMapProjection) {
+    sMapProjection.addEventListener('change', () => {
+        state.mapProjection = sMapProjection.value;
+        rebuildMapProjectionView();
+    });
+}
 
 sMapCenterLon.addEventListener('input', () => {
     const lon = +sMapCenterLon.value;
-    const suffix = lon > 0 ? '东' : lon < 0 ? '西' : '';
-    vMapCenterLon.textContent = Math.abs(lon) + '\u00B0' + suffix;
+    vMapCenterLon.textContent = formatLonLabel(lon);
     state.mapCenterLon = lon * Math.PI / 180;
-    if (state.mapMode && state.mapMesh) {
-        const builtLon = state.mapMesh._builtCenterLon || 0;
-        const dx = (builtLon - state.mapCenterLon) * (2 / Math.PI);
-        state.mapMesh.position.x = dx;
-        if (state.mapGridMesh) state.mapGridMesh.position.x = dx;
-        if (state.mapSuperPlateBorderMesh) state.mapSuperPlateBorderMesh.position.x = dx;
-    }
+    scheduleMapProjectionRefresh();
 });
 
-sMapCenterLon.addEventListener('change', () => {
-    if (state.mapMode) {
-        buildMapMesh();
-        const layer = state.debugLayer;
-        const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                       layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-        const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-        if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-        if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
-    }
+sMapCenterLon.addEventListener('change', rebuildMapProjectionView);
+
+sMapCenterLat.addEventListener('input', () => {
+    const lat = +sMapCenterLat.value;
+    vMapCenterLat.textContent = formatLatLabel(lat);
+    state.mapCenterLat = lat * Math.PI / 180;
+    scheduleMapProjectionRefresh();
 });
+
+sMapCenterLat.addEventListener('change', rebuildMapProjectionView);
 
 function updateViewHint() {
     const globeHint = state.isTouchDevice
         ? '拖拽旋转 · 双指缩放'
         : '拖拽旋转 · 滚轮缩放';
     const hint = state.mapMode
-        ? '拖拽平移地图 · 滚轮缩放 · 中心经度调整投影'
+        ? `拖拽平移地图 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
         : state.freeCameraMode
             ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
             : globeHint;
@@ -622,7 +649,9 @@ function setViewMode(mode) {
         updateMapCameraFrustum();
         mapCtrl.target.set(0, 0, 0);
         mapCtrl.update();
+        mapProjectionGroup.style.display = '';
         mapCenterLonGroup.style.display = '';
+        mapCenterLatGroup.style.display = '';
     } else {
         if (state.planetMesh) state.planetMesh.visible = true;
         atmosMesh.visible = true;
@@ -649,7 +678,9 @@ function setViewMode(mode) {
         mapCtrl.enabled = false;
         ctrl.enabled = !state.freeCameraMode;
         if (!state.freeCameraMode) recenterGlobeCamera();
+        mapProjectionGroup.style.display = 'none';
         mapCenterLonGroup.style.display = 'none';
+        mapCenterLatGroup.style.display = 'none';
     }
 
     updateSuperPlateBorders();
@@ -947,14 +978,8 @@ window.addEventListener('resize', () => {
         if (Math.abs(d.z) < 1e-10) return -1;
         const t = -o.z / d.z;
         const wx = o.x + t * d.x, wy = o.y + t * d.y;
-        const PI = Math.PI, sx = 2 / PI;
-        let lon = wx / sx + (state.mapCenterLon || 0);
-        const lat = wy / sx;
-        if (lat < -PI / 2 || lat > PI / 2) return -1;
-        if (lon > PI) lon -= 2 * PI;
-        else if (lon < -PI) lon += 2 * PI;
-        const cosLat = Math.cos(lat);
-        return findNearestRegion(cosLat * Math.sin(lon), Math.sin(lat), cosLat * Math.cos(lon));
+        const xyz = mapPointToXyz(wx, wy);
+        return xyz ? findNearestRegion(xyz[0], xyz[1], xyz[2]) : -1;
     }
 
     function updateHoverInfo(e) {
