@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom, setFreeCameraControls, recenterGlobeCamera } from './scene.js';
+         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera } from './scene.js';
 import { state } from './state.js';
 import { generate, reapplyViaWorker, computeClimateViaWorker, editRecomputeViaWorker } from './generate.js';
 import { encodePlanetCode, decodePlanetCode } from './planet-code.js';
@@ -692,6 +692,21 @@ sMapCenterLon.addEventListener('change', () => {
     }
 });
 
+function updateViewHint() {
+    const globeHint = state.isTouchDevice
+        ? '拖拽旋转 · 双指缩放 · 使用编辑按钮重塑'
+        : '拖拽旋转 · 滚轮缩放 · Ctrl 点击重塑大陆';
+    const hint = state.mapMode
+        ? '拖拽平移地图 · 滚轮缩放 · 中心经度调整投影'
+        : state.freeCameraMode
+            ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
+            : globeHint;
+    for (const id of ['topInfo', 'info']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = hint;
+    }
+}
+
 // View mode dropdown (Globe / Free Camera / Map)
 function setViewMode(mode) {
     state.mapMode = mode === 'map';
@@ -766,12 +781,13 @@ function setViewMode(mode) {
         waterMesh.visible = !showPlates && !state.debugLayer;
         scene.background = new THREE.Color(0x030308);
         mapCtrl.enabled = false;
-        ctrl.enabled = true;
+        ctrl.enabled = !state.freeCameraMode;
         if (!state.freeCameraMode) recenterGlobeCamera();
         mapCenterLonGroup.style.display = 'none';
     }
 
     updateSuperPlateBorders();
+    updateViewHint();
 }
 
 document.getElementById('viewMode').addEventListener('change', (e) => setViewMode(e.target.value));
@@ -1124,8 +1140,16 @@ window.addEventListener('orientationchange', () => {
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
-    if (state.mapMode) { tickMapZoom(); mapCtrl.update(); } else { tickZoom(); ctrl.update(); }
-    if (!state.mapMode && state.planetMesh && document.getElementById('chkRotate').checked) {
+    if (state.mapMode) {
+        tickMapZoom();
+        mapCtrl.update();
+    } else if (state.freeCameraMode) {
+        tickFreeCamera();
+    } else {
+        tickZoom();
+        ctrl.update();
+    }
+    if (!state.mapMode && !state.freeCameraMode && state.planetMesh && document.getElementById('chkRotate').checked) {
         state.planetMesh.rotation.y += 0.0008;
         waterMesh.rotation.y = state.planetMesh.rotation.y;
         if (state.wireMesh) state.wireMesh.rotation.y = state.planetMesh.rotation.y;

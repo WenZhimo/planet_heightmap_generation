@@ -20,9 +20,30 @@ ctrl.enablePan = false;
 ctrl.minDistance = 1.4; ctrl.maxDistance = 8;
 ctrl.enableZoom = false; // disable built-in zoom; custom handler below
 
+let _freeCameraEnabled = false;
+let _freeLookActive = false;
+let _freeYaw = 0;
+let _freePitch = 0;
+let _freeLastTick = performance.now();
+const _freeKeys = new Set();
+const _freeEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _freeForward = new THREE.Vector3();
+const _freeRight = new THREE.Vector3();
+const _freeMove = new THREE.Vector3();
+const FREE_MOVE_SPEED = 1.35;
+const FREE_LOOK_SENSITIVITY = 0.003;
+const FREE_PITCH_LIMIT = Math.PI / 2 - 0.02;
+
 export function setFreeCameraControls(enabled) {
-    ctrl.enablePan = enabled;
-    ctrl.screenSpacePanning = true;
+    _freeCameraEnabled = enabled;
+    _freeLookActive = false;
+    _freeKeys.clear();
+    _freeLastTick = performance.now();
+    if (enabled) {
+        _freeEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+        _freePitch = _freeEuler.x;
+        _freeYaw = _freeEuler.y;
+    }
 }
 
 // Smooth zoom: wheel sets a target distance, each frame lerps toward it
@@ -75,6 +96,86 @@ export function tickZoom() {
     if (Math.abs(next - cur) < 0.0001) return;
     v.setLength(next);
     camera.position.copy(ctrl.target).add(v);
+}
+
+function isTypingTarget(target) {
+    if (!target) return false;
+    const tag = target.tagName;
+    return target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+function applyFreeLook() {
+    _freeEuler.set(_freePitch, _freeYaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(_freeEuler);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (!_freeCameraEnabled || isTypingTarget(e.target)) return;
+    const key = e.key.toLowerCase();
+    if (!'wasdqe'.includes(key)) return;
+    e.preventDefault();
+    _freeKeys.add(key);
+});
+
+window.addEventListener('keyup', (e) => {
+    _freeKeys.delete(e.key.toLowerCase());
+});
+
+window.addEventListener('blur', () => {
+    _freeKeys.clear();
+    _freeLookActive = false;
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+    if (_freeCameraEnabled) e.preventDefault();
+});
+
+canvas.addEventListener('pointerdown', (e) => {
+    if (!_freeCameraEnabled || e.button !== 2) return;
+    e.preventDefault();
+    _freeLookActive = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+});
+
+canvas.addEventListener('pointermove', (e) => {
+    if (!_freeCameraEnabled || !_freeLookActive) return;
+    e.preventDefault();
+    _freeYaw -= e.movementX * FREE_LOOK_SENSITIVITY;
+    _freePitch -= e.movementY * FREE_LOOK_SENSITIVITY;
+    _freePitch = THREE.MathUtils.clamp(_freePitch, -FREE_PITCH_LIMIT, FREE_PITCH_LIMIT);
+    applyFreeLook();
+});
+
+function stopFreeLook(e) {
+    if (!_freeLookActive) return;
+    _freeLookActive = false;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+}
+
+canvas.addEventListener('pointerup', stopFreeLook);
+canvas.addEventListener('pointercancel', stopFreeLook);
+
+export function tickFreeCamera() {
+    if (!_freeCameraEnabled) return;
+
+    const now = performance.now();
+    const dt = Math.min(0.05, Math.max(0, (now - _freeLastTick) / 1000));
+    _freeLastTick = now;
+
+    _freeMove.set(0, 0, 0);
+    camera.getWorldDirection(_freeForward);
+    _freeRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+
+    if (_freeKeys.has('w')) _freeMove.add(_freeForward);
+    if (_freeKeys.has('s')) _freeMove.sub(_freeForward);
+    if (_freeKeys.has('d')) _freeMove.add(_freeRight);
+    if (_freeKeys.has('a')) _freeMove.sub(_freeRight);
+    if (_freeKeys.has('e')) _freeMove.y += 1;
+    if (_freeKeys.has('q')) _freeMove.y -= 1;
+
+    if (_freeMove.lengthSq() === 0) return;
+    _freeMove.normalize();
+    camera.position.addScaledVector(_freeMove, FREE_MOVE_SPEED * dt);
 }
 
 scene.add(new THREE.AmbientLight(0xaabbcc, 3.5));
