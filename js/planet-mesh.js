@@ -689,6 +689,7 @@ export function updateSuperPlateBorders() {
             bg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
             state.superPlateBorderMesh = new THREE.LineSegments(bg,
                 new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55 }));
+            if (state.planetMesh) state.superPlateBorderMesh.rotation.copy(state.planetMesh.rotation);
             scene.add(state.superPlateBorderMesh);
         }
     }

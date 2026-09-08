@@ -3,6 +3,8 @@
 export const state = {
     planetMesh: null,
     wireMesh: null,
+    superPlateBorderMesh: null,
+    mapSuperPlateBorderMesh: null,
     arrowGroup: null,
     windArrowGroup: null,
     curData: null,
@@ -21,6 +23,7 @@ export const state = {
     gridEnabled: true,
     gridSpacing: 15,
     mapMode: false,
+    freeCameraMode: false,
     mapCenterLon: 0,
     dragStart: null,
     debugLayer: '',

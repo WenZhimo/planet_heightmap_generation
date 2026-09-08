@@ -4,10 +4,10 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom } from './scene.js';
+         tickZoom, tickMapZoom, setFreeCameraControls, recenterGlobeCamera } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
-import { buildMesh, updateMeshColors, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
+import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
@@ -547,6 +547,7 @@ sMapCenterLon.addEventListener('input', () => {
         const dx = (builtLon - state.mapCenterLon) * (2 / Math.PI);
         state.mapMesh.position.x = dx;
         if (state.mapGridMesh) state.mapGridMesh.position.x = dx;
+        if (state.mapSuperPlateBorderMesh) state.mapSuperPlateBorderMesh.position.x = dx;
     }
 });
 
@@ -562,9 +563,12 @@ sMapCenterLon.addEventListener('change', () => {
     }
 });
 
-// Globe / Map toggle
-document.getElementById('viewMode').addEventListener('change', (e) => {
-    state.mapMode = e.target.value === 'map';
+// Globe / Free Camera / Map toggle
+function setViewMode(mode) {
+    state.mapMode = mode === 'map';
+    state.freeCameraMode = mode === 'free';
+    setFreeCameraControls(state.freeCameraMode);
+
     if (state.mapMode) {
         if (state.planetMesh) state.planetMesh.visible = false;
         waterMesh.visible = false;
@@ -630,9 +634,14 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         scene.background = new THREE.Color(0x030308);
         mapCtrl.enabled = false;
         ctrl.enabled = true;
+        if (!state.freeCameraMode) recenterGlobeCamera();
         mapCenterLonGroup.style.display = 'none';
     }
-});
+
+    updateSuperPlateBorders();
+}
+
+document.getElementById('viewMode').addEventListener('change', (e) => setViewMode(e.target.value));
 
 // ─── Export modal ─────────────────────────────────────────────────
 
@@ -839,6 +848,7 @@ function animate() {
         state.planetMesh.rotation.y += 0.0008;
         waterMesh.rotation.y = state.planetMesh.rotation.y;
         if (state.wireMesh) state.wireMesh.rotation.y = state.planetMesh.rotation.y;
+        if (state.superPlateBorderMesh) state.superPlateBorderMesh.rotation.y = state.planetMesh.rotation.y;
         if (state.arrowGroup) state.arrowGroup.rotation.y = state.planetMesh.rotation.y;
         if (state.windArrowGroup) state.windArrowGroup.rotation.y = state.planetMesh.rotation.y;
         if (state.oceanCurrentArrowGroup) state.oceanCurrentArrowGroup.rotation.y = state.planetMesh.rotation.y;

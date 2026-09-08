@@ -20,10 +20,23 @@ ctrl.enablePan = false;
 ctrl.minDistance = 1.4; ctrl.maxDistance = 8;
 ctrl.enableZoom = false; // disable built-in zoom; custom handler below
 
+export function setFreeCameraControls(enabled) {
+    ctrl.enablePan = enabled;
+    ctrl.screenSpacePanning = true;
+}
+
 // Smooth zoom: wheel sets a target distance, each frame lerps toward it
 let _zoomTarget = camera.position.distanceTo(ctrl.target);
 const ZOOM_STEP   = 0.92;   // multiplier per tick (lower = faster zoom)
 const ZOOM_SMOOTH = 0.12;   // lerp speed per frame (higher = snappier)
+
+export function recenterGlobeCamera() {
+    const v = new THREE.Vector3().subVectors(camera.position, ctrl.target);
+    ctrl.target.set(0, 0, 0);
+    camera.position.copy(ctrl.target).add(v);
+    _zoomTarget = THREE.MathUtils.clamp(v.length(), ctrl.minDistance, ctrl.maxDistance);
+    ctrl.update();
+}
 
 canvas.addEventListener('wheel', (e) => {
     if (!ctrl.enabled) return;
