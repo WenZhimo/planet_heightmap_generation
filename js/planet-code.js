@@ -1,6 +1,15 @@
 // Planet code encode/decode — packs seed + slider values into a compact base36 string.
 // Pure functions, no DOM access.
 
+const MAP_PROJECTION_IDS = [
+    'equirectangular',
+    'mercator',
+    'naturalEarth1',
+    'equalEarth',
+    'orthographic',
+    'azimuthalEqualArea',
+];
+
 // Slider quantization tables
 const SLIDERS = [
     { min: 5000,  step: 1000, count: 2556 }, // Detail (N)
@@ -19,12 +28,18 @@ const SLIDERS = [
     { min: -15,   step: 1,    count: 31  }, // 13: Temperature
     { min: -1,    step: 0.1,  count: 21  }, // 14: Precipitation
     { min: 0,     step: 0.01, count: 101 }, // 15: Land Coverage
+    { min: 0,     step: 1,    count: MAP_PROJECTION_IDS.length }, // 16: Map Projection
+    { min: -180,  step: 5,    count: 73  }, // 17: Map Center Longitude
+    { min: -85,   step: 5,    count: 35  }, // 18: Map Center Latitude
 ];
 
-// Mixed-radix bases (right-to-left): lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, scIdx, rsIdx, teIdx, heIdx, glIdx, smIdx, nsIdx, cnIdx, pIdx, jIdx, nIdx, seed
+// Mixed-radix bases for the pre-map format (right-to-left): lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, scIdx, rsIdx, teIdx, heIdx, glIdx, smIdx, nsIdx, cnIdx, pIdx, jIdx, nIdx, seed
 const RADICES = [101, 21, 31, 21, 21, 21, 21, 21, 21, 21, 21, 51, 10, 117, 21, 2556];
+// Current format adds map-center latitude, map-center longitude, and projection before the pre-map fields.
+const MAP_RADICES = [35, 73, MAP_PROJECTION_IDS.length, ...RADICES];
 const SEED_MAX = 16777216; // 2^24
-const BASE_LEN = 22; // base code length (no toggles)
+const CURRENT_LEN = 24; // current base code length with map settings (no toggles)
+const BASE_LEN = 22; // previous base code length before map settings (no toggles)
 const PREV5_LEN = 21; // previous 21-char codes (before land coverage)
 const PREV4_LEN = 18; // previous 18-char codes (before continent variety/temp/precip)
 const PREV3_LEN = 17; // previous 17-char codes (before terrain warp)
@@ -143,6 +158,17 @@ const DECODE_FORMATS = {
         ],
         defaults: {}
     },
+    [CURRENT_LEN]: {
+        radices: MAP_RADICES,
+        fields: [
+            ['mapCenterLat', 18], ['mapCenterLon', 17], ['mapProjectionIndex', 16],
+            ['landCoverage', 15], ['precipitationOffset', 14], ['temperatureOffset', 13],
+            ['continentSizeVariety', 12], ['terrainWarp', 11], ['soilCreep', 10], ['ridgeSharpening', 9],
+            ['thermalErosion', 8], ['hydraulicErosion', 7], ['glacialErosion', 6],
+            ['smoothing', 5], ['roughness', 4], ['numContinents', 3], ['P', 2], ['jitter', 1], ['N', 0],
+        ],
+        defaults: {}
+    },
 };
 
 /** Generic mixed-radix decode: extract fields LSB-first, validate, convert, apply defaults. */
@@ -159,6 +185,11 @@ function decodeFormat(packed, config, toggleStr) {
     result.seed = Number(packed);
     if (result.seed < 0 || result.seed >= SEED_MAX) return null;
     Object.assign(result, defaults);
+    const projectionIndex = Number.isInteger(result.mapProjectionIndex) ? result.mapProjectionIndex : 0;
+    result.mapProjection = MAP_PROJECTION_IDS[projectionIndex] || MAP_PROJECTION_IDS[0];
+    delete result.mapProjectionIndex;
+    if (!Number.isFinite(result.mapCenterLon)) result.mapCenterLon = 0;
+    if (!Number.isFinite(result.mapCenterLat)) result.mapCenterLat = 0;
 
     const toggledIndices = [];
     if (toggleStr) {
@@ -190,11 +221,14 @@ function decodeFormat(packed, config, toggleStr) {
  * @param {number} continentSizeVariety - Continent Size Variety (0–1, step 0.05)
  * @param {number} temperatureOffset - Temperature offset (-15–15, step 1)
  * @param {number} precipitationOffset - Precipitation offset (-1–1, step 0.1)
- * @param {number} landCoverage - Land Coverage (0–1, step 0.05)
+ * @param {number} landCoverage - Land Coverage (0–1, step 0.01)
  * @param {number[]} [toggledIndices=[]] - Sorted array of toggled plate indices
- * @returns {string} base36 code (22 chars without edits, 22 + '-' + 2*k with k edits)
+ * @param {string} [mapProjection='equirectangular'] - Flat-map projection id
+ * @param {number} [mapCenterLon=0] - Flat-map center longitude in degrees (-180–180, step 5)
+ * @param {number} [mapCenterLat=0] - Flat-map center latitude in degrees (-85–85, step 5)
+ * @returns {string} base36 code (24 chars without edits, 24 + '-' + 2*k with k edits)
  */
-export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, soilCreep, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage, toggledIndices = []) {
+export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, soilCreep, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage, toggledIndices = [], mapProjection = 'equirectangular', mapCenterLon = 0, mapCenterLat = 0) {
     const nIdx  = toIndex(N, SLIDERS[0]);
     const jIdx  = toIndex(jitter, SLIDERS[1]);
     const pIdx  = toIndex(P, SLIDERS[2]);
@@ -211,6 +245,9 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
     const tmpIdx = toIndex(temperatureOffset, SLIDERS[13]);
     const prcIdx = toIndex(precipitationOffset, SLIDERS[14]);
     const lcIdx  = toIndex(landCoverage, SLIDERS[15]);
+    const projectionIdx = Math.max(0, MAP_PROJECTION_IDS.indexOf(mapProjection));
+    const mapLonIdx = toIndex(mapCenterLon, SLIDERS[17]);
+    const mapLatIdx = toIndex(mapCenterLat, SLIDERS[18]);
 
     // Mixed-radix packing (least-significant first: lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, ...)
     let packed = BigInt(seed);
@@ -230,8 +267,11 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
     packed = packed * BigInt(RADICES[2])  + BigInt(tmpIdx);  // * 31
     packed = packed * BigInt(RADICES[1])  + BigInt(prcIdx);  // * 21
     packed = packed * BigInt(RADICES[0])  + BigInt(lcIdx);   // * 21
+    packed = packed * BigInt(MAP_PROJECTION_IDS.length) + BigInt(projectionIdx);
+    packed = packed * BigInt(SLIDERS[17].count) + BigInt(mapLonIdx);
+    packed = packed * BigInt(SLIDERS[18].count) + BigInt(mapLatIdx);
 
-    let code = packed.toString(36).padStart(BASE_LEN, '0');
+    let code = packed.toString(36).padStart(CURRENT_LEN, '0');
 
     // Append toggled plate indices: "-" + 2-char base36 per index
     if (toggledIndices.length > 0) {
@@ -245,9 +285,9 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
 
 /**
  * Decode a base36 planet code back into planet parameters.
- * Supports 22-char (current), 21-char (prev5), 18-char (prev4), 17-char (prev3), 16-char (prev2), 14-char (previous-gen), and 13-char (legacy) codes.
- * @param {string} code - base36 code (13, 14, 16, 17, 18, 21, or 22 chars, optionally followed by "-" + toggle indices)
- * @returns {{ seed: number, N: number, jitter: number, P: number, numContinents: number, roughness: number, terrainWarp: number, smoothing: number, glacialErosion: number, hydraulicErosion: number, thermalErosion: number, ridgeSharpening: number, soilCreep: number, continentSizeVariety: number, temperatureOffset: number, precipitationOffset: number, landCoverage: number, toggledIndices: number[] } | null}
+ * Supports 24-char (current), 22-char (pre-map), 21-char (prev5), 18-char (prev4), 17-char (prev3), 16-char (prev2), 14-char (previous-gen), and 13-char (legacy) codes.
+ * @param {string} code - base36 code (13, 14, 16, 17, 18, 21, 22, or 24 chars, optionally followed by "-" + toggle indices)
+ * @returns {{ seed: number, N: number, jitter: number, P: number, numContinents: number, roughness: number, terrainWarp: number, smoothing: number, glacialErosion: number, hydraulicErosion: number, thermalErosion: number, ridgeSharpening: number, soilCreep: number, continentSizeVariety: number, temperatureOffset: number, precipitationOffset: number, landCoverage: number, mapProjection: string, mapCenterLon: number, mapCenterLat: number, toggledIndices: number[] } | null}
  */
 export function decodePlanetCode(code) {
     if (typeof code !== 'string') return null;

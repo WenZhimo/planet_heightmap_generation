@@ -154,6 +154,7 @@ for (const [s,v] of [['sN','vN'],['sP','vP'],['sCn','vCn'],['sJ','vJ'],['sNs','v
         } else {
             document.getElementById(v).textContent = e.target.value;
         }
+        updatePlanetCode(false);
         if (s === 'sTw' || s === 'sS' || s === 'sGl' || s === 'sHEr' || s === 'sTEr' || s === 'sRs') {
             markReapplyPending();
         } else if (s === 'sTmp' || s === 'sPrc') {
@@ -492,6 +493,7 @@ const seedInput = document.getElementById('seedCode');
 const copyBtn   = document.getElementById('copyBtn');
 const loadBtn   = document.getElementById('loadBtn');
 let currentCode = ''; // the code for the currently loaded planet
+let planetCodeRefreshSuppressed = false;
 
 function updateLoadBtn() {
     const val = seedInput.value.trim().toLowerCase();
@@ -514,10 +516,25 @@ function getToggledIndices() {
     return indices;
 }
 
+function getEncodedToggledIndices() {
+    const plateChanged = PLATE_SLIDERS.some(id => document.getElementById(id).value !== lastGenValues[id]);
+    return plateChanged ? [] : getToggledIndices();
+}
+
+function getCurrentMapCodeParams() {
+    return {
+        mapProjection: sMapProjection?.value || state.mapProjection || 'equirectangular',
+        mapCenterLon: +(sMapCenterLon?.value ?? 0),
+        mapCenterLat: +(sMapCenterLat?.value ?? 0),
+    };
+}
+
 /** Encode current planet state and update the seed input + URL hash. */
 function updatePlanetCode(flash) {
+    if (planetCodeRefreshSuppressed) return;
     const d = state.curData;
     if (!d) return;
+    const { mapProjection, mapCenterLon, mapCenterLat } = getCurrentMapCodeParams();
     const code = encodePlanetCode(
         d.seed,
         detailFromSlider(+document.getElementById('sN').value),
@@ -536,7 +553,10 @@ function updatePlanetCode(flash) {
         +document.getElementById('sTmp').value,
         +document.getElementById('sPrc').value,
         +document.getElementById('sLc').value,
-        getToggledIndices()
+        getEncodedToggledIndices(),
+        mapProjection,
+        mapCenterLon,
+        mapCenterLat
     );
     currentCode = code;
     seedInput.value = code;
@@ -612,6 +632,31 @@ function paramsToSliderMap(params) {
     };
 }
 
+function applyMapCodeParams(params) {
+    if (sMapProjection) {
+        const projection = params.mapProjection || 'equirectangular';
+        const hasProjection = [...sMapProjection.options].some(opt => opt.value === projection);
+        sMapProjection.value = hasProjection ? projection : 'equirectangular';
+        state.mapProjection = sMapProjection.value;
+    }
+
+    if (sMapCenterLon && vMapCenterLon) {
+        const lon = Number.isFinite(params.mapCenterLon) ? params.mapCenterLon : 0;
+        sMapCenterLon.value = lon;
+        vMapCenterLon.textContent = formatLonLabel(lon);
+        state.mapCenterLon = lon * Math.PI / 180;
+    }
+
+    if (sMapCenterLat && vMapCenterLat) {
+        const lat = Number.isFinite(params.mapCenterLat) ? params.mapCenterLat : 0;
+        sMapCenterLat.value = lat;
+        vMapCenterLat.textContent = formatLatLabel(lat);
+        state.mapCenterLat = lat * Math.PI / 180;
+    }
+
+    updateViewHint();
+}
+
 function applyCode(code) {
     const params = decodePlanetCode(code);
     if (!params) {
@@ -623,11 +668,21 @@ function applyCode(code) {
     seedError.classList.remove('visible');
     // Set slider values + fire input events to update displays
     const map = paramsToSliderMap(params);
-    for (const [id, val] of Object.entries(map)) {
-        const el = document.getElementById(id);
-        el.value = val;
-        el.dispatchEvent(new Event('input'));
+    planetCodeRefreshSuppressed = true;
+    try {
+        for (const [id, val] of Object.entries(map)) {
+            const el = document.getElementById(id);
+            el.value = val;
+            el.dispatchEvent(new Event('input'));
+        }
+        applyMapCodeParams(params);
+    } finally {
+        planetCodeRefreshSuppressed = false;
     }
+    currentCode = code.trim().toLowerCase();
+    seedInput.value = currentCode;
+    updateLoadBtn();
+    history.replaceState(null, '', '#' + currentCode);
     clearReapplyPending();
     state.pendingToggles.clear();
     document.getElementById('rebuildFab').style.display = 'none';
@@ -728,6 +783,7 @@ function scheduleMapProjectionRefresh() {
 if (sMapProjection) {
     sMapProjection.addEventListener('change', () => {
         state.mapProjection = sMapProjection.value;
+        updatePlanetCode(false);
         rebuildMapProjectionViewWithOverlay('正在切换地图投影…');
     });
 }
@@ -736,10 +792,12 @@ sMapCenterLon.addEventListener('input', () => {
     const lon = +sMapCenterLon.value;
     vMapCenterLon.textContent = formatLonLabel(lon);
     state.mapCenterLon = lon * Math.PI / 180;
+    updatePlanetCode(false);
     scheduleMapProjectionRefresh();
 });
 
 sMapCenterLon.addEventListener('change', () => {
+    updatePlanetCode(false);
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
@@ -747,10 +805,12 @@ sMapCenterLat.addEventListener('input', () => {
     const lat = +sMapCenterLat.value;
     vMapCenterLat.textContent = formatLatLabel(lat);
     state.mapCenterLat = lat * Math.PI / 180;
+    updatePlanetCode(false);
     scheduleMapProjectionRefresh();
 });
 
 sMapCenterLat.addEventListener('change', () => {
+    updatePlanetCode(false);
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
@@ -1554,6 +1614,7 @@ if (hashParams) {
         el.value = val;
         el.dispatchEvent(new Event('input'));
     }
+    applyMapCodeParams(hashParams);
     generate(hashParams.seed, hashParams.toggledIndices, onProgress, shouldSkipClimate());
 } else {
     generate(undefined, [], onProgress, shouldSkipClimate());
