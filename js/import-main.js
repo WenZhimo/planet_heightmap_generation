@@ -895,7 +895,7 @@ function updateViewHint() {
         ? '拖拽旋转 · 双指缩放'
         : '拖拽旋转 · 滚轮缩放';
     const hint = state.mapMode
-        ? `拖拽旋转投影 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
+        ? `左键旋转投影 · 右键平移 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
         : state.freeCameraMode
             ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
             : globeHint;

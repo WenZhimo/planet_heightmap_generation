@@ -127,7 +127,7 @@ window.addEventListener('blur', () => {
 });
 
 canvas.addEventListener('contextmenu', (e) => {
-    if (_freeCameraEnabled) e.preventDefault();
+    if (_freeCameraEnabled || document.getElementById('viewMode')?.value === 'map') e.preventDefault();
 });
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -234,12 +234,12 @@ updateMapCameraFrustum();
 
 export const mapCtrl = new OrbitControls(mapCamera, canvas);
 mapCtrl.enableRotate = false;
-mapCtrl.enablePan = false;
+mapCtrl.enablePan = true;
 mapCtrl.enableDamping = true;
 mapCtrl.dampingFactor = 0.09;
 mapCtrl.panSpeed = 1.4;
 mapCtrl.screenSpacePanning = true;
-mapCtrl.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+mapCtrl.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
 mapCtrl.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
 mapCtrl.minZoom = 0.5;
 mapCtrl.maxZoom = 20;

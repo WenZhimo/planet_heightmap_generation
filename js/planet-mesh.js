@@ -16,6 +16,7 @@ const MAP_CLIP_PLANES = [
     new THREE.Plane(new THREE.Vector3(-1, 0, 0), 2),   // x <= 2
 ];
 const MAP_PROJECTION_PREVIEW_MAX_SIDES = 24000;
+let mapProjectionPreviewActive = false;
 
 // Precompute smoothed biome colors: each region blends with its neighbors' average.
 // Uses mesh adjacency (~6 neighbors per region) so it's inherently scale-independent.
@@ -337,6 +338,16 @@ function clearMapProjectionPreview() {
     state._mapPreviewFaceToSideBuffer = null;
 }
 
+function hasProjectedTriangles(mesh) {
+    return !!(mesh && mesh.geometry && mesh.geometry.drawRange && mesh.geometry.drawRange.count > 0);
+}
+
+function syncMapProjectionPreviewVisibility() {
+    const showPreview = mapProjectionPreviewActive && state.mapMode && hasProjectedTriangles(state.mapProjectionPreviewMesh);
+    if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = showPreview;
+    if (state.mapMesh) state.mapMesh.visible = state.mapMode && !showPreview;
+}
+
 function updateProjectedTriangleMesh(targetMesh, sourceXyz, sourceColors, sourceCount, faceToSideBuffer, params, commitFaceMap) {
     if (!targetMesh || !sourceXyz || !sourceColors || !faceToSideBuffer) return false;
     const geo = targetMesh.geometry;
@@ -420,7 +431,7 @@ function buildMapProjectionPreviewMesh(params = getMapProjectionParams()) {
 
 function updateMapProjectionPreviewMesh(params = getMapProjectionParams()) {
     if (!state.mapProjectionPreviewMesh && !buildMapProjectionPreviewMesh(params)) return false;
-    return updateProjectedTriangleMesh(
+    const ok = updateProjectedTriangleMesh(
         state.mapProjectionPreviewMesh,
         state._mapPreviewTriangleXyz,
         state._mapPreviewTriangleColors,
@@ -429,18 +440,19 @@ function updateMapProjectionPreviewMesh(params = getMapProjectionParams()) {
         params,
         false
     );
+    if (mapProjectionPreviewActive) syncMapProjectionPreviewVisibility();
+    return ok;
 }
 
 export function setMapProjectionPreviewActive(active, params = getMapProjectionParams()) {
+    mapProjectionPreviewActive = !!active;
     if (active) {
         const ok = updateMapProjectionPreviewMesh(params);
-        if (!ok) return false;
-        if (state.mapMesh) state.mapMesh.visible = false;
-        if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = !!state.mapMode;
-        return true;
+        if (!ok) mapProjectionPreviewActive = false;
+        syncMapProjectionPreviewVisibility();
+        return ok && hasProjectedTriangles(state.mapProjectionPreviewMesh);
     }
-    if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = false;
-    if (state.mapMesh) state.mapMesh.visible = !!state.mapMode;
+    syncMapProjectionPreviewVisibility();
     return true;
 }
 
