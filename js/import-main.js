@@ -558,7 +558,7 @@ const sMapZoom = document.getElementById('sMapZoom');
 const vMapZoom = document.getElementById('vMapZoom');
 const mapViewResetGroup = document.getElementById('mapViewResetGroup');
 const mapViewResetBtn = document.getElementById('mapViewReset');
-const MAP_VIEW_DEFAULTS = { projection: 'equirectangular', lon: 0, lat: 0, rotation: 0, zoom: 1 };
+const MAP_VIEW_DEFAULTS = { lon: 0, lat: 0, rotation: 0, zoom: 1 };
 const MAP_DRAG_MIN_DISTANCE = 4;
 const RAD_TO_DEG = 180 / Math.PI;
 const DEG_TO_RAD = Math.PI / 180;
@@ -721,10 +721,6 @@ function setMapZoomControls(zoom, { immediate = false, syncCamera = true } = {})
 }
 
 function resetMapViewControls() {
-    if (sMapProjection) {
-        sMapProjection.value = MAP_VIEW_DEFAULTS.projection;
-        state.mapProjection = MAP_VIEW_DEFAULTS.projection;
-    }
     resetMapCameraView();
     setMapOrientationControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, MAP_VIEW_DEFAULTS.rotation, { refresh: 'none' });
     setMapZoomControls(MAP_VIEW_DEFAULTS.zoom, { immediate: true });
