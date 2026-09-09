@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
          tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera,
-         resetMapCameraView, getMapCameraZoom, setMapCameraZoom } from './scene.js';
+         resetMapCameraView, setMapCameraZoom } from './scene.js';
 import { state } from './state.js';
 import { generate, reapplyViaWorker, computeClimateViaWorker, editRecomputeViaWorker } from './generate.js';
 import { encodePlanetCode, decodePlanetCode } from './planet-code.js';
@@ -655,20 +655,9 @@ function getPlanetCodeSeed() {
     return pendingPlanetSeed !== state.curData.seed ? pendingPlanetSeed : state.curData.seed;
 }
 
-function getCurrentMapCodeParams() {
-    return {
-        mapProjection: sMapProjection?.value || state.mapProjection || 'equirectangular',
-        mapCenterLon: +(sMapCenterLon?.value ?? 0),
-        mapCenterLat: +(sMapCenterLat?.value ?? 0),
-        mapRotation: +(sMapRotation?.value ?? 0),
-        mapZoom: +(sMapZoom?.value ?? getMapCameraZoom()),
-    };
-}
-
 /** Encode current planet state and update the seed input + URL hash. */
 function updatePlanetCode(flash) {
     if (planetCodeRefreshSuppressed) return;
-    const { mapProjection, mapCenterLon, mapCenterLat, mapRotation, mapZoom } = getCurrentMapCodeParams();
     const code = encodePlanetCode(
         getPlanetCodeSeed(),
         detailFromSlider(+document.getElementById('sN').value),
@@ -682,17 +671,11 @@ function updatePlanetCode(flash) {
         +document.getElementById('sHEr').value,
         +document.getElementById('sTEr').value,
         +document.getElementById('sRs').value,
-        0.75,
         +document.getElementById('sCsv').value,
         +document.getElementById('sTmp').value,
         +document.getElementById('sPrc').value,
         +document.getElementById('sLc').value,
-        getEncodedToggledIndices(),
-        mapProjection,
-        mapCenterLon,
-        mapCenterLat,
-        mapRotation,
-        mapZoom
+        getEncodedToggledIndices()
     );
     currentCode = code;
     seedInput.value = code;
@@ -768,41 +751,6 @@ function paramsToSliderMap(params) {
     };
 }
 
-function applyMapCodeParams(params) {
-    if (sMapProjection) {
-        const projection = params.mapProjection || 'equirectangular';
-        const hasProjection = [...sMapProjection.options].some(opt => opt.value === projection);
-        sMapProjection.value = hasProjection ? projection : 'equirectangular';
-        state.mapProjection = sMapProjection.value;
-    }
-
-    if (sMapCenterLon && vMapCenterLon) {
-        const lon = Number.isFinite(params.mapCenterLon) ? params.mapCenterLon : 0;
-        sMapCenterLon.value = lon;
-        vMapCenterLon.textContent = formatLonLabel(lon);
-        state.mapCenterLon = lon * Math.PI / 180;
-    }
-
-    if (sMapCenterLat && vMapCenterLat) {
-        const lat = Number.isFinite(params.mapCenterLat) ? params.mapCenterLat : 0;
-        sMapCenterLat.value = lat;
-        vMapCenterLat.textContent = formatLatLabel(lat);
-        state.mapCenterLat = lat * Math.PI / 180;
-    }
-
-    if (sMapRotation && vMapRotation) {
-        const rotation = Number.isFinite(params.mapRotation) ? params.mapRotation : 0;
-        setMapRotationControls(rotation, { refresh: 'none' });
-    }
-
-    if (sMapZoom && vMapZoom) {
-        const zoom = Number.isFinite(params.mapZoom) ? params.mapZoom : 1;
-        setMapZoomControls(zoom, { immediate: true });
-    }
-
-    updateViewHint();
-}
-
 function applyCode(code) {
     const params = decodePlanetCode(code);
     if (!params) {
@@ -822,7 +770,6 @@ function applyCode(code) {
             el.value = val;
             el.dispatchEvent(new Event('input'));
         }
-        applyMapCodeParams(params);
     } finally {
         planetCodeRefreshSuppressed = false;
     }
@@ -978,7 +925,6 @@ function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true }
     sMapCenterLat.value = snappedLat;
     vMapCenterLat.textContent = formatLatLabel(snappedLat);
     state.mapCenterLat = snappedLat * Math.PI / 180;
-    updatePlanetCode(false);
     if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
@@ -988,7 +934,6 @@ function setMapRotationControls(rotation, { refresh = 'schedule', overlay = true
     sMapRotation.value = snappedRotation;
     vMapRotation.textContent = `${snappedRotation}°`;
     state.mapRotation = snappedRotation * DEG_TO_RAD;
-    updatePlanetCode(false);
     if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
@@ -1006,7 +951,6 @@ function setMapZoomControls(zoom, { immediate = false, syncCamera = true } = {})
     vMapZoom.textContent = formatMapZoomLabel(snappedZoom);
     state.mapZoom = snappedZoom;
     if (syncCamera && !mapZoomSyncing) setMapCameraZoom(snappedZoom, { immediate });
-    updatePlanetCode(false);
 }
 
 function resetMapViewControls() {
@@ -1024,7 +968,6 @@ function resetMapViewControls() {
 if (sMapProjection) {
     sMapProjection.addEventListener('change', () => {
         state.mapProjection = sMapProjection.value;
-        updatePlanetCode(false);
         rebuildMapProjectionViewWithOverlay('正在切换地图投影…');
     });
 }
@@ -1034,7 +977,6 @@ sMapCenterLon.addEventListener('input', () => {
 });
 
 sMapCenterLon.addEventListener('change', () => {
-    updatePlanetCode(false);
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
@@ -1043,7 +985,6 @@ sMapCenterLat.addEventListener('input', () => {
 });
 
 sMapCenterLat.addEventListener('change', () => {
-    updatePlanetCode(false);
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
@@ -1053,7 +994,6 @@ if (sMapRotation) {
     });
 
     sMapRotation.addEventListener('change', () => {
-        updatePlanetCode(false);
         rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
     });
 }
@@ -1390,6 +1330,88 @@ if (debugLayerEl) {
         }
     }
 
+    function initDebugOptionDragSelect() {
+        if (!debugLayerList) return;
+        let drag = null;
+        let suppressClick = false;
+        const inputSelector = 'input[type="checkbox"]';
+
+        function optionInputs() {
+            return [...debugLayerList.querySelectorAll(inputSelector)];
+        }
+
+        function checkboxAt(clientX, clientY) {
+            const el = document.elementFromPoint(clientX, clientY);
+            const label = el?.closest?.('.export-check');
+            if (!label || !debugLayerList.contains(label)) return null;
+            return label.querySelector(inputSelector);
+        }
+
+        function applyTo(input) {
+            if (!drag || !input || drag.visited.has(input)) return;
+            input.checked = drag.checked;
+            drag.visited.add(input);
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function applyRangeTo(input) {
+            if (!drag || !input) return;
+            const inputs = optionInputs();
+            const nextIndex = inputs.indexOf(input);
+            if (nextIndex === -1) return;
+            const from = Number.isInteger(drag.lastIndex) ? drag.lastIndex : nextIndex;
+            const lo = Math.min(from, nextIndex);
+            const hi = Math.max(from, nextIndex);
+            for (let i = lo; i <= hi; i++) applyTo(inputs[i]);
+            drag.lastIndex = nextIndex;
+        }
+
+        function autoScroll(clientY) {
+            const rect = debugLayerList.getBoundingClientRect();
+            const edge = 28;
+            if (clientY < rect.top + edge) debugLayerList.scrollTop -= 12;
+            else if (clientY > rect.bottom - edge) debugLayerList.scrollTop += 12;
+        }
+
+        debugLayerList.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            const input = checkboxAt(e.clientX, e.clientY);
+            if (!input) return;
+            const startIndex = optionInputs().indexOf(input);
+            if (startIndex === -1) return;
+            drag = { id: e.pointerId, checked: !input.checked, visited: new Set(), lastIndex: startIndex };
+            suppressClick = true;
+            debugLayerList.classList.add('drag-selecting');
+            applyTo(input);
+            e.preventDefault();
+            try { debugLayerList.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        debugLayerList.addEventListener('pointermove', (e) => {
+            if (!drag || e.pointerId !== drag.id) return;
+            autoScroll(e.clientY);
+            applyRangeTo(checkboxAt(e.clientX, e.clientY));
+            e.preventDefault();
+        });
+
+        function finish(e) {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag = null;
+            debugLayerList.classList.remove('drag-selecting');
+            try { debugLayerList.releasePointerCapture(e.pointerId); } catch (_) {}
+            e.preventDefault();
+        }
+
+        debugLayerList.addEventListener('pointerup', finish);
+        debugLayerList.addEventListener('pointercancel', finish);
+        debugLayerList.addEventListener('click', (e) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+    }
+
     function selectedBundleTypes() {
         const labels = new Map(debugExportOptions().map(opt => [opt.type, opt.label]));
         const out = [...DEFAULT_BUNDLE_TYPES];
@@ -1437,6 +1459,7 @@ if (debugLayerEl) {
     openBtn.addEventListener('click', openModal);
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
+    initDebugOptionDragSelect();
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal();
@@ -2027,7 +2050,6 @@ if (hashParams) {
             el.value = val;
             el.dispatchEvent(new Event('input'));
         }
-        applyMapCodeParams(hashParams);
     } finally {
         planetCodeRefreshSuppressed = false;
     }

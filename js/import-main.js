@@ -1015,6 +1015,88 @@ document.getElementById('viewMode').addEventListener('change', (e) => setViewMod
         }
     }
 
+    function initDebugOptionDragSelect() {
+        if (!debugLayerList) return;
+        let drag = null;
+        let suppressClick = false;
+        const inputSelector = 'input[type="checkbox"]';
+
+        function optionInputs() {
+            return [...debugLayerList.querySelectorAll(inputSelector)];
+        }
+
+        function checkboxAt(clientX, clientY) {
+            const el = document.elementFromPoint(clientX, clientY);
+            const label = el?.closest?.('.export-check');
+            if (!label || !debugLayerList.contains(label)) return null;
+            return label.querySelector(inputSelector);
+        }
+
+        function applyTo(input) {
+            if (!drag || !input || drag.visited.has(input)) return;
+            input.checked = drag.checked;
+            drag.visited.add(input);
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function applyRangeTo(input) {
+            if (!drag || !input) return;
+            const inputs = optionInputs();
+            const nextIndex = inputs.indexOf(input);
+            if (nextIndex === -1) return;
+            const from = Number.isInteger(drag.lastIndex) ? drag.lastIndex : nextIndex;
+            const lo = Math.min(from, nextIndex);
+            const hi = Math.max(from, nextIndex);
+            for (let i = lo; i <= hi; i++) applyTo(inputs[i]);
+            drag.lastIndex = nextIndex;
+        }
+
+        function autoScroll(clientY) {
+            const rect = debugLayerList.getBoundingClientRect();
+            const edge = 28;
+            if (clientY < rect.top + edge) debugLayerList.scrollTop -= 12;
+            else if (clientY > rect.bottom - edge) debugLayerList.scrollTop += 12;
+        }
+
+        debugLayerList.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            const input = checkboxAt(e.clientX, e.clientY);
+            if (!input) return;
+            const startIndex = optionInputs().indexOf(input);
+            if (startIndex === -1) return;
+            drag = { id: e.pointerId, checked: !input.checked, visited: new Set(), lastIndex: startIndex };
+            suppressClick = true;
+            debugLayerList.classList.add('drag-selecting');
+            applyTo(input);
+            e.preventDefault();
+            try { debugLayerList.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        debugLayerList.addEventListener('pointermove', (e) => {
+            if (!drag || e.pointerId !== drag.id) return;
+            autoScroll(e.clientY);
+            applyRangeTo(checkboxAt(e.clientX, e.clientY));
+            e.preventDefault();
+        });
+
+        function finish(e) {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag = null;
+            debugLayerList.classList.remove('drag-selecting');
+            try { debugLayerList.releasePointerCapture(e.pointerId); } catch (_) {}
+            e.preventDefault();
+        }
+
+        debugLayerList.addEventListener('pointerup', finish);
+        debugLayerList.addEventListener('pointercancel', finish);
+        debugLayerList.addEventListener('click', (e) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+    }
+
     function selectedBundleTypes() {
         const labels = new Map(debugExportOptions().map(opt => [opt.type, opt.label]));
         const out = [...DEFAULT_BUNDLE_TYPES];
@@ -1056,6 +1138,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => setViewMod
     openBtn.addEventListener('click', openModal);
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
+    initDebugOptionDragSelect();
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal();

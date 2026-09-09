@@ -726,14 +726,20 @@ button#generate.generating {
     overflow-y: auto;
     padding-right: 4px;
 }
+.export-debug-layer-list.drag-selecting {
+    cursor: copy;
+    user-select: none;
+}
 .export-check {
     display: flex;
     align-items: center;
     gap: 6px;
     color: #bcd;
+    cursor: pointer;
     font-size: 12px;
     line-height: 1.25;
     min-width: 0;
+    user-select: none;
 }
 .export-check input {
     flex: 0 0 auto;
