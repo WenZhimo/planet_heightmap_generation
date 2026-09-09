@@ -902,7 +902,7 @@ function scheduleMapProjectionPreview() {
         rebuildMapProjectionView({
             overlays: false,
             previewOnly: mapProjectionDragging,
-            lines: !mapProjectionDragging,
+            lines: true,
         });
     });
 }
@@ -1114,7 +1114,7 @@ function initMapCenterDrag() {
             moved: false,
         };
         mapProjectionDragging = true;
-        setMapProjectionPreviewActive(true, params, { snapshot: true });
+        setMapProjectionPreviewActive(true, params);
         e.preventDefault();
         e.stopImmediatePropagation();
         canvas.classList.add('map-center-dragging');
