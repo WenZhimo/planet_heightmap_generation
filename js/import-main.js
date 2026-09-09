@@ -8,7 +8,7 @@ import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          resetMapCameraView, setMapCameraZoom } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
-import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, rebuildGrids, exportMap, exportWorldBundle, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
+import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, updateMapProjectionMeshes, setMapProjectionPreviewActive, rebuildGrids, exportMap, exportWorldBundle, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
@@ -564,25 +564,39 @@ const RAD_TO_DEG = 180 / Math.PI;
 const DEG_TO_RAD = Math.PI / 180;
 let mapProjectionRefreshTimer = 0;
 let mapProjectionRefreshToken = 0;
+let mapProjectionPreviewFrame = 0;
+let mapProjectionDragging = false;
 let mapZoomSyncing = false;
 
-function rebuildMapProjectionView() {
-    if (!state.mapMode) return;
-    buildMapMesh();
+function rebuildProjectedFlowOverlays() {
     const layer = state.debugLayer;
     const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
                    layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
     const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
     if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
     if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+}
+
+function rebuildMapProjectionView({ forceRebuild = false, overlays = true, previewOnly = false } = {}) {
+    if (!state.mapMode) return;
+    if (forceRebuild || !updateMapProjectionMeshes(undefined, { previewOnly })) buildMapMesh();
+    if (overlays) rebuildProjectedFlowOverlays();
     updateViewHint();
 }
 
 function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影…') {
     if (!state.mapMode) return;
+    if (state.mapMesh) {
+        rebuildMapProjectionView();
+        return;
+    }
     if (mapProjectionRefreshTimer) {
         clearTimeout(mapProjectionRefreshTimer);
         mapProjectionRefreshTimer = 0;
+    }
+    if (mapProjectionPreviewFrame) {
+        cancelAnimationFrame(mapProjectionPreviewFrame);
+        mapProjectionPreviewFrame = 0;
     }
     const token = ++mapProjectionRefreshToken;
     showBuildOverlay();
@@ -592,7 +606,7 @@ function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影�
         if (!state.mapMode) { hideBuildOverlay(); return; }
         try {
             onProgress(35, '正在构建地图网格…');
-            rebuildMapProjectionView();
+            rebuildMapProjectionView({ forceRebuild: true });
             onProgress(100, '地图投影已更新');
         } catch (err) {
             console.error('[MapProjection] Failed to rebuild projected map view:', err);
@@ -603,17 +617,43 @@ function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影�
     }, 50);
 }
 
-function scheduleMapProjectionRefresh({ overlay = true, debounce = true, label = '正在调整地图视角…' } = {}) {
+function scheduleMapProjectionPreview() {
     if (!state.mapMode) return;
+    if (mapProjectionPreviewFrame) return;
+    mapProjectionPreviewFrame = requestAnimationFrame(() => {
+        mapProjectionPreviewFrame = 0;
+        rebuildMapProjectionView({ overlays: false, previewOnly: mapProjectionDragging });
+    });
+}
+
+function flushMapProjectionPreview({ overlays = true } = {}) {
+    if (mapProjectionPreviewFrame) {
+        cancelAnimationFrame(mapProjectionPreviewFrame);
+        mapProjectionPreviewFrame = 0;
+    }
+    if (mapProjectionRefreshTimer) {
+        clearTimeout(mapProjectionRefreshTimer);
+        mapProjectionRefreshTimer = 0;
+    }
+    mapProjectionDragging = false;
+    rebuildMapProjectionView({ overlays });
+    setMapProjectionPreviewActive(false);
+}
+
+function scheduleMapProjectionRefresh({ overlay = false, debounce = true } = {}) {
+    if (!state.mapMode) return;
+    if (overlay && !state.mapMesh) {
+        rebuildMapProjectionViewWithOverlay();
+        return;
+    }
     if (mapProjectionRefreshTimer) {
         if (!debounce) return;
         clearTimeout(mapProjectionRefreshTimer);
     }
     mapProjectionRefreshTimer = setTimeout(() => {
         mapProjectionRefreshTimer = 0;
-        if (overlay) rebuildMapProjectionViewWithOverlay(label);
-        else rebuildMapProjectionView();
-    }, overlay ? 180 : 80);
+        rebuildMapProjectionView({ overlays: false });
+    }, 16);
 }
 
 function clampMapCenter(value, input) {
@@ -640,7 +680,7 @@ function formatMapZoomLabel(value) {
     return Number(value).toFixed(2) + '×';
 }
 
-function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true } = {}) {
+function setMapCenterControls(lon, lat, { refresh = 'preview', overlay = false } = {}) {
     const snappedLon = snapMapCenter(wrapMapCenterLon(lon), sMapCenterLon);
     const snappedLat = snapMapCenter(lat, sMapCenterLat);
     sMapCenterLon.value = snappedLon;
@@ -649,23 +689,26 @@ function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true }
     sMapCenterLat.value = snappedLat;
     vMapCenterLat.textContent = formatLatLabel(snappedLat);
     state.mapCenterLat = snappedLat * Math.PI / 180;
-    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
 
-function setMapRotationControls(rotation, { refresh = 'schedule', overlay = true } = {}) {
+function setMapRotationControls(rotation, { refresh = 'preview', overlay = false } = {}) {
     const snappedRotation = snapMapCenter(wrapMapCenterLon(rotation), sMapRotation);
     sMapRotation.value = snappedRotation;
     vMapRotation.textContent = `${snappedRotation}°`;
     state.mapRotation = snappedRotation * DEG_TO_RAD;
-    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
 
-function setMapOrientationControls(lon, lat, rotation, { refresh = 'schedule', overlay = true } = {}) {
+function setMapOrientationControls(lon, lat, rotation, { refresh = 'preview', overlay = false } = {}) {
     setMapCenterControls(lon, lat, { refresh: 'none' });
     setMapRotationControls(rotation, { refresh: 'none' });
-    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
 
@@ -685,14 +728,14 @@ function resetMapViewControls() {
     resetMapCameraView();
     setMapOrientationControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, MAP_VIEW_DEFAULTS.rotation, { refresh: 'none' });
     setMapZoomControls(MAP_VIEW_DEFAULTS.zoom, { immediate: true });
-    rebuildMapProjectionViewWithOverlay('正在重置地图视角…');
+    flushMapProjectionPreview();
     updateViewHint();
 }
 
 if (sMapProjection) {
     sMapProjection.addEventListener('change', () => {
         state.mapProjection = sMapProjection.value;
-        rebuildMapProjectionViewWithOverlay('正在切换地图投影…');
+        flushMapProjectionPreview();
     });
 }
 
@@ -701,7 +744,7 @@ sMapCenterLon.addEventListener('input', () => {
 });
 
 sMapCenterLon.addEventListener('change', () => {
-    rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    flushMapProjectionPreview();
 });
 
 sMapCenterLat.addEventListener('input', () => {
@@ -709,7 +752,7 @@ sMapCenterLat.addEventListener('input', () => {
 });
 
 sMapCenterLat.addEventListener('change', () => {
-    rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    flushMapProjectionPreview();
 });
 
 if (sMapRotation) {
@@ -718,7 +761,7 @@ if (sMapRotation) {
     });
 
     sMapRotation.addEventListener('change', () => {
-        rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
+        flushMapProjectionPreview();
     });
 }
 
@@ -770,6 +813,8 @@ function initMapCenterDrag() {
         if (!drag) return;
         const id = drag.id;
         drag = null;
+        mapProjectionDragging = false;
+        setMapProjectionPreviewActive(false);
         canvas.classList.remove('map-center-dragging');
         try { canvas.releasePointerCapture(id); } catch (_) {}
     }
@@ -792,6 +837,8 @@ function initMapCenterDrag() {
             startParams: { ...params },
             moved: false,
         };
+        mapProjectionDragging = true;
+        setMapProjectionPreviewActive(true, params);
         e.preventDefault();
         e.stopImmediatePropagation();
         canvas.classList.add('map-center-dragging');
@@ -824,13 +871,15 @@ function initMapCenterDrag() {
         if (!drag || e.pointerId !== drag.id) return;
         const moved = drag.moved;
         drag = null;
+        mapProjectionDragging = false;
         canvas.classList.remove('map-center-dragging');
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
         if (mapProjectionRefreshTimer) {
             clearTimeout(mapProjectionRefreshTimer);
             mapProjectionRefreshTimer = 0;
         }
-        if (moved) rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+        if (moved) flushMapProjectionPreview();
+        else setMapProjectionPreviewActive(false);
         e.preventDefault();
         e.stopImmediatePropagation();
     }
@@ -878,6 +927,7 @@ function setViewMode(mode) {
                 hideBuildOverlay();
             }, 50);
         }
+        setMapProjectionPreviewActive(false);
         if (state.mapMesh) state.mapMesh.visible = true;
         if (state.mapGridMesh) state.mapGridMesh.visible = state.gridEnabled;
         if (state.globeGridMesh) state.globeGridMesh.visible = false;
@@ -913,6 +963,7 @@ function setViewMode(mode) {
         starsMesh.visible = true;
         if (state.wireMesh) state.wireMesh.visible = true;
         if (state.arrowGroup) state.arrowGroup.visible = true;
+        setMapProjectionPreviewActive(false);
         if (state.mapMesh) state.mapMesh.visible = false;
         if (state.mapGridMesh) state.mapGridMesh.visible = false;
         if (state.globeGridMesh) state.globeGridMesh.visible = state.gridEnabled;

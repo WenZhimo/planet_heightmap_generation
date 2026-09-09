@@ -6,7 +6,7 @@ import { state } from './state.js';
 import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
 import { KOPPEN_CLASSES } from './koppen.js';
-import { getMapProjectionParams, projectMapDirectionFromXyz, projectMapSegmentFromLonLat, projectMapSegmentFromXyz, projectMapTriangleFromXyz } from './map-projection.js';
+import { createMapProjectionProjector, getMapProjectionParams, projectMapDirectionFromXyz, projectMapSegmentFromLonLat, writeProjectedMapSegmentFromLonLat, writeProjectedMapSegmentFromXyz, writeProjectedMapTriangleFromXyz } from './map-projection.js';
 import { createZipBlob, downloadBlob } from './zip-util.js';
 
 // Clipping planes for map wrap — keep everything within x ∈ [-2, 2]
@@ -15,6 +15,7 @@ const MAP_CLIP_PLANES = [
     new THREE.Plane(new THREE.Vector3(1, 0, 0), 2),   // x >= -2
     new THREE.Plane(new THREE.Vector3(-1, 0, 0), 2),   // x <= 2
 ];
+const MAP_PROJECTION_PREVIEW_MAX_SIDES = 24000;
 
 // Precompute smoothed biome colors: each region blends with its neighbors' average.
 // Uses mesh adjacency (~6 neighbors per region) so it's inherently scale-independent.
@@ -300,9 +301,202 @@ export function computePlateColors(plateSeeds, plateIsOcean) {
     }
 }
 
+function resetMapHighlightBackups() {
+    state._mapHoverBackup = null;
+    state._mapKoppenHoverBackup = null;
+    state._mapPendingBackup = null;
+}
+
+function setStableMapBounds(geo) {
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 8);
+}
+
+function projectedTriangleCapacity(numSides) {
+    return numSides * 2;
+}
+
+function clearMapProjectionCache() {
+    state._mapTriangleXyz = null;
+    state._mapTriangleColors = null;
+    state._mapTriangleCount = 0;
+    state._mapTriangleCapacity = 0;
+    state._mapFaceToSideBuffer = null;
+    clearMapProjectionPreview();
+}
+
+function clearMapProjectionPreview() {
+    if (state.mapProjectionPreviewMesh) {
+        scene.remove(state.mapProjectionPreviewMesh);
+        state.mapProjectionPreviewMesh.geometry.dispose();
+        state.mapProjectionPreviewMesh.material.dispose();
+        state.mapProjectionPreviewMesh = null;
+    }
+    state._mapPreviewTriangleXyz = null;
+    state._mapPreviewTriangleColors = null;
+    state._mapPreviewTriangleCount = 0;
+    state._mapPreviewFaceToSideBuffer = null;
+}
+
+function updateProjectedTriangleMesh(targetMesh, sourceXyz, sourceColors, sourceCount, faceToSideBuffer, params, commitFaceMap) {
+    if (!targetMesh || !sourceXyz || !sourceColors || !faceToSideBuffer) return false;
+    const geo = targetMesh.geometry;
+    const posAttr = geo.getAttribute('position');
+    const colorAttr = geo.getAttribute('color');
+    if (!posAttr || !colorAttr) return false;
+
+    const positions = posAttr.array;
+    const colors = colorAttr.array;
+    const maxTriCount = Math.min(faceToSideBuffer.length, Math.floor(positions.length / 9), Math.floor(colors.length / 9));
+    const totalSources = sourceCount || Math.floor(sourceXyz.length / 9);
+    const projector = createMapProjectionProjector(params);
+    let triCount = 0;
+
+    for (let s = 0; s < totalSources; s++) {
+        const src = s * 9;
+        if (triCount + 2 > maxTriCount) break;
+        const added = writeProjectedMapTriangleFromXyz(projector, sourceXyz, src, positions, triCount * 9, 0);
+        for (let i = 0; i < added; i++) {
+            const off = triCount * 9;
+            for (let j = 0; j < 9; j++) colors[off + j] = sourceColors[src + j];
+            faceToSideBuffer[triCount] = s;
+            triCount++;
+        }
+    }
+
+    geo.setDrawRange(0, triCount * 3);
+    posAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    if (commitFaceMap) {
+        state.mapFaceToSide = faceToSideBuffer.subarray(0, triCount);
+        resetMapHighlightBackups();
+    }
+    return true;
+}
+
+export function updateMapMeshProjection(params = getMapProjectionParams()) {
+    return updateProjectedTriangleMesh(
+        state.mapMesh,
+        state._mapTriangleXyz,
+        state._mapTriangleColors,
+        state._mapTriangleCount,
+        state._mapFaceToSideBuffer,
+        params,
+        true
+    );
+}
+
+function buildMapProjectionPreviewMesh(params = getMapProjectionParams()) {
+    clearMapProjectionPreview();
+    if (!state._mapTriangleXyz || !state._mapTriangleColors || !state._mapTriangleCount) return false;
+
+    const sourceCount = state._mapTriangleCount;
+    const step = Math.max(1, Math.ceil(sourceCount / MAP_PROJECTION_PREVIEW_MAX_SIDES));
+    const previewCount = Math.ceil(sourceCount / step);
+    const sourceXyz = new Float32Array(previewCount * 9);
+    const sourceColors = new Float32Array(previewCount * 9);
+    let dst = 0;
+    for (let s = 0; s < sourceCount; s += step) {
+        const src = s * 9;
+        sourceXyz.set(state._mapTriangleXyz.subarray(src, src + 9), dst);
+        sourceColors.set(state._mapTriangleColors.subarray(src, src + 9), dst);
+        dst += 9;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(previewCount * 2 * 9), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(previewCount * 2 * 9), 3));
+    setStableMapBounds(geo);
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: MAP_CLIP_PLANES });
+    state.mapProjectionPreviewMesh = new THREE.Mesh(geo, mat);
+    state.mapProjectionPreviewMesh.visible = false;
+    state._mapPreviewTriangleXyz = sourceXyz;
+    state._mapPreviewTriangleColors = sourceColors;
+    state._mapPreviewTriangleCount = previewCount;
+    state._mapPreviewFaceToSideBuffer = new Int32Array(previewCount * 2);
+    updateProjectedTriangleMesh(state.mapProjectionPreviewMesh, sourceXyz, sourceColors, previewCount, state._mapPreviewFaceToSideBuffer, params, false);
+    scene.add(state.mapProjectionPreviewMesh);
+    return true;
+}
+
+function updateMapProjectionPreviewMesh(params = getMapProjectionParams()) {
+    if (!state.mapProjectionPreviewMesh && !buildMapProjectionPreviewMesh(params)) return false;
+    return updateProjectedTriangleMesh(
+        state.mapProjectionPreviewMesh,
+        state._mapPreviewTriangleXyz,
+        state._mapPreviewTriangleColors,
+        state._mapPreviewTriangleCount,
+        state._mapPreviewFaceToSideBuffer,
+        params,
+        false
+    );
+}
+
+export function setMapProjectionPreviewActive(active, params = getMapProjectionParams()) {
+    if (active) {
+        const ok = updateMapProjectionPreviewMesh(params);
+        if (!ok) return false;
+        if (state.mapMesh) state.mapMesh.visible = false;
+        if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = !!state.mapMode;
+        return true;
+    }
+    if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = false;
+    if (state.mapMesh) state.mapMesh.visible = !!state.mapMode;
+    return true;
+}
+
+function updateProjectedXyzLineMesh(lineMesh, sourceSegments, sourceCount, z, params) {
+    if (!lineMesh || !sourceSegments || !sourceCount) return false;
+    const geo = lineMesh.geometry;
+    const posAttr = geo.getAttribute('position');
+    if (!posAttr) return false;
+    const positions = posAttr.array;
+    const maxSegments = Math.floor(positions.length / 6);
+    const projector = createMapProjectionProjector(params);
+    let segCount = 0;
+
+    for (let i = 0; i < sourceCount; i++) {
+        const src = i * 6;
+        if (segCount + 2 > maxSegments) break;
+        segCount += writeProjectedMapSegmentFromXyz(projector, sourceSegments, src, positions, segCount * 6, z);
+    }
+
+    geo.setDrawRange(0, segCount * 2);
+    posAttr.needsUpdate = true;
+    return true;
+}
+
+function updateProjectedLonLatLineMesh(lineMesh, sourceSegments, sourceCount, z, params) {
+    if (!lineMesh || !sourceSegments || !sourceCount) return false;
+    const geo = lineMesh.geometry;
+    const posAttr = geo.getAttribute('position');
+    if (!posAttr) return false;
+    const positions = posAttr.array;
+    const maxSegments = Math.floor(positions.length / 6);
+    const projector = createMapProjectionProjector(params);
+    let segCount = 0;
+
+    for (let i = 0; i < sourceCount; i++) {
+        const src = i * 4;
+        if (segCount + 2 > maxSegments) break;
+        segCount += writeProjectedMapSegmentFromLonLat(projector, sourceSegments, src, positions, segCount * 6, z);
+    }
+
+    geo.setDrawRange(0, segCount * 2);
+    posAttr.needsUpdate = true;
+    return true;
+}
+
+export function updateMapProjectionMeshes(params = getMapProjectionParams(), { previewOnly = false } = {}) {
+    const meshUpdated = previewOnly ? updateMapProjectionPreviewMesh(params) : updateMapMeshProjection(params);
+    updateProjectedLonLatLineMesh(state.mapGridMesh, state._mapGridSourceSegments, state._mapGridSourceCount, 0.001, params);
+    updateProjectedXyzLineMesh(state.mapSuperPlateBorderMesh, state._mapBorderSourceSegments, state._mapBorderSourceCount, 0.002, params);
+    return meshUpdated;
+}
+
 // Build projected map mesh.
 export function buildMapMesh() {
     if (state.mapMesh) { scene.remove(state.mapMesh); state.mapMesh.geometry.dispose(); state.mapMesh.material.dispose(); state.mapMesh = null; }
+    clearMapProjectionCache();
     if (!state.curData || !state.mapMode) return;
 
     const { mesh, r_xyz, t_xyz, r_plate, r_elevation, t_elevation, mountain_r, coastline_r, ocean_r, r_stress, debugLayers } = state.curData;
@@ -348,12 +542,12 @@ export function buildMapMesh() {
     const biomeSmoothed = (isBiome && koppenArr) ? getCachedBiomeSmoothed(mesh, koppenArr, r_elevation) : null;
     const isSmooth = isHeightmap || isLandHeightmap;
 
-    // Upper-bound allocation: wrapping sides produce 2 triangles, non-wrapping 1.
-    // Wraps are rare, so 2× is a conservative upper bound; trimmed after the loop.
-    const posArr = new Float32Array(numSides * 2 * 9);
-    const colArr = new Float32Array(numSides * 2 * 9);
-    const faceToSide = new Int32Array(numSides * 2);
-    let triCount = 0;
+    const maxTriCount = projectedTriangleCapacity(numSides);
+    const posArr = new Float32Array(maxTriCount * 9);
+    const colArr = new Float32Array(maxTriCount * 9);
+    const sourceXyz = new Float32Array(numSides * 9);
+    const sourceColors = new Float32Array(numSides * 9);
+    const faceToSide = new Int32Array(maxTriCount);
 
     for (let s = 0; s < numSides; s++) {
         const it = mesh.s_inner_t(s);
@@ -417,40 +611,31 @@ export function buildMapMesh() {
         const x1 = t_xyz[3*ot], y1 = t_xyz[3*ot+1], z1 = t_xyz[3*ot+2];
         const x2 = r_xyz[3*br], y2 = r_xyz[3*br+1], z2 = r_xyz[3*br+2];
 
-        const projectedTriangles = projectMapTriangleFromXyz([
-            [x0, y0, z0],
-            [x1, y1, z1],
-            [x2, y2, z2],
-        ], projectionParams);
-
-        for (const tri of projectedTriangles) {
-            const off = triCount * 9;
-            posArr[off]   = tri[0].x; posArr[off+1] = tri[0].y; posArr[off+2] = 0;
-            posArr[off+3] = tri[1].x; posArr[off+4] = tri[1].y; posArr[off+5] = 0;
-            posArr[off+6] = tri[2].x; posArr[off+7] = tri[2].y; posArr[off+8] = 0;
-            colArr[off]=c0r; colArr[off+1]=c0g; colArr[off+2]=c0b;
-            colArr[off+3]=c1r; colArr[off+4]=c1g; colArr[off+5]=c1b;
-            colArr[off+6]=c2r; colArr[off+7]=c2g; colArr[off+8]=c2b;
-            faceToSide[triCount] = s;
-            triCount++;
-        }
+        const off = s * 9;
+        sourceXyz[off]     = x0; sourceXyz[off + 1] = y0; sourceXyz[off + 2] = z0;
+        sourceXyz[off + 3] = x1; sourceXyz[off + 4] = y1; sourceXyz[off + 5] = z1;
+        sourceXyz[off + 6] = x2; sourceXyz[off + 7] = y2; sourceXyz[off + 8] = z2;
+        sourceColors[off]     = c0r; sourceColors[off + 1] = c0g; sourceColors[off + 2] = c0b;
+        sourceColors[off + 3] = c1r; sourceColors[off + 4] = c1g; sourceColors[off + 5] = c1b;
+        sourceColors[off + 6] = c2r; sourceColors[off + 7] = c2g; sourceColors[off + 8] = c2b;
     }
 
-    const finalPos = posArr.subarray(0, triCount * 9);
-    const finalCol = colArr.subarray(0, triCount * 9);
-
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(finalPos), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(finalCol), 3));
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    setStableMapBounds(geo);
 
     const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: MAP_CLIP_PLANES });
     state.mapMesh = new THREE.Mesh(geo, mat);
     state.mapMesh.visible = state.mapMode;
-    state.mapFaceToSide = faceToSide.subarray(0, triCount);
-    state._mapHoverBackup = null;
-    state._mapKoppenHoverBackup = null;
-    state._mapPendingBackup = null;
+    state._mapTriangleXyz = sourceXyz;
+    state._mapTriangleColors = sourceColors;
+    state._mapTriangleCount = numSides;
+    state._mapTriangleCapacity = maxTriCount;
+    state._mapFaceToSideBuffer = faceToSide;
+    updateMapMeshProjection(projectionParams);
     scene.add(state.mapMesh);
+    buildMapProjectionPreviewMesh(projectionParams);
 
     updateSuperPlateBorders();
     buildMapGrid();
@@ -464,19 +649,17 @@ function buildMapGrid() {
         state.mapGridMesh.material.dispose();
         state.mapGridMesh = null;
     }
+    state._mapGridSourceSegments = null;
+    state._mapGridSourceCount = 0;
 
     const spacing = state.gridSpacing;
-    const Z = 0.001;
     const DEG = Math.PI / 180;
-    const params = getMapProjectionParams();
     const latSamples = Math.max(36, Math.ceil(180 / Math.max(2.5, spacing)) * 2);
     const lonSamples = Math.max(72, Math.ceil(360 / Math.max(2.5, spacing)) * 2);
-    const positions = [];
+    const source = [];
 
-    function pushProjectedSegments(segments) {
-        for (const [p0, p1] of segments) {
-            positions.push(p0.x, p0.y, Z, p1.x, p1.y, Z);
-        }
+    function pushSegment(lon0, lat0, lon1, lat1) {
+        source.push(lon0, lat0, lon1, lat1);
     }
 
     for (let deg = -90; deg <= 90; deg += spacing) {
@@ -484,7 +667,7 @@ function buildMapGrid() {
         for (let i = 0; i < lonSamples; i++) {
             const lon0 = (-180 + i * 360 / lonSamples) * DEG;
             const lon1 = (-180 + (i + 1) * 360 / lonSamples) * DEG;
-            pushProjectedSegments(projectMapSegmentFromLonLat(lon0, lat, lon1, lat, params));
+            pushSegment(lon0, lat, lon1, lat);
         }
     }
 
@@ -493,15 +676,20 @@ function buildMapGrid() {
         for (let i = 0; i < latSamples; i++) {
             const lat0 = (-90 + i * 180 / latSamples) * DEG;
             const lat1 = (-90 + (i + 1) * 180 / latSamples) * DEG;
-            pushProjectedSegments(projectMapSegmentFromLonLat(lon, lat0, lon, lat1, params));
+            pushSegment(lon, lat0, lon, lat1);
         }
     }
 
+    const sourceCount = source.length / 4;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(sourceCount * 2 * 2 * 3), 3));
+    setStableMapBounds(geo);
     const gridMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12, clippingPlanes: MAP_CLIP_PLANES });
     state.mapGridMesh = new THREE.LineSegments(geo, gridMat);
     state.mapGridMesh.visible = state.mapMode && state.gridEnabled;
+    state._mapGridSourceSegments = new Float32Array(source);
+    state._mapGridSourceCount = sourceCount;
+    updateProjectedLonLatLineMesh(state.mapGridMesh, state._mapGridSourceSegments, state._mapGridSourceCount, 0.001, getMapProjectionParams());
     scene.add(state.mapGridMesh);
 }
 
@@ -616,6 +804,8 @@ export function updateSuperPlateBorders() {
     // Cleanup existing
     if (state.superPlateBorderMesh) { scene.remove(state.superPlateBorderMesh); state.superPlateBorderMesh.geometry.dispose(); state.superPlateBorderMesh.material.dispose(); state.superPlateBorderMesh = null; }
     if (state.mapSuperPlateBorderMesh) { scene.remove(state.mapSuperPlateBorderMesh); state.mapSuperPlateBorderMesh.geometry.dispose(); state.mapSuperPlateBorderMesh.material.dispose(); state.mapSuperPlateBorderMesh = null; }
+    state._mapBorderSourceSegments = null;
+    state._mapBorderSourceCount = 0;
 
     if (!state.curData) return;
     const showPlates = document.getElementById('chkPlates').checked;
@@ -660,8 +850,7 @@ export function updateSuperPlateBorders() {
 
     // Map borders
     if (state.mapMode) {
-        const params = getMapProjectionParams();
-        const bps = [];
+        const sourceSegments = [];
         for (let s = 0; s < numSides; s++) {
             const opp = mesh.halfedges[s];
             if (s < opp) {
@@ -669,22 +858,23 @@ export function updateSuperPlateBorders() {
                 const r2 = mesh.s_begin_r(opp);
                 if (spArr[r1] !== spArr[r2]) {
                     const it = mesh.s_inner_t(s), ot = mesh.s_outer_t(s);
-                    const segs = projectMapSegmentFromXyz(
-                        [t_xyz[3*it], t_xyz[3*it+1], t_xyz[3*it+2]],
-                        [t_xyz[3*ot], t_xyz[3*ot+1], t_xyz[3*ot+2]],
-                        params
+                    sourceSegments.push(
+                        t_xyz[3*it], t_xyz[3*it+1], t_xyz[3*it+2],
+                        t_xyz[3*ot], t_xyz[3*ot+1], t_xyz[3*ot+2]
                     );
-                    for (const [p0, p1] of segs) {
-                        bps.push(p0.x, p0.y, 0.002, p1.x, p1.y, 0.002);
-                    }
                 }
             }
         }
-        if (bps.length > 0) {
+        if (sourceSegments.length > 0) {
+            const sourceCount = sourceSegments.length / 6;
             const bg = new THREE.BufferGeometry();
-            bg.setAttribute('position', new THREE.Float32BufferAttribute(bps, 3));
+            bg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(sourceCount * 2 * 2 * 3), 3));
+            setStableMapBounds(bg);
             const bMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, clippingPlanes: MAP_CLIP_PLANES });
             state.mapSuperPlateBorderMesh = new THREE.LineSegments(bg, bMat);
+            state._mapBorderSourceSegments = new Float32Array(sourceSegments);
+            state._mapBorderSourceCount = sourceCount;
+            updateProjectedXyzLineMesh(state.mapSuperPlateBorderMesh, state._mapBorderSourceSegments, state._mapBorderSourceCount, 0.002, getMapProjectionParams());
             scene.add(state.mapSuperPlateBorderMesh);
         }
     }
@@ -1042,16 +1232,48 @@ export function updateMeshColors() {
     state._koppenHoverBackup = null;
     state._pendingBackup = null;
 
+    if (state._mapTriangleColors) {
+        const sourceMapColors = state._mapTriangleColors;
+        for (let s = 0; s < numSides; s++) {
+            const off = s * 9;
+            if (isSmooth) {
+                const it = mesh.s_inner_t(s);
+                const ot = mesh.s_outer_t(s);
+                const br = mesh.s_begin_r(s);
+                const colorFn = isLandHeightmap ? landHeightmapColor : heightmapColor;
+                const v0 = colorFn(t_elevation[it])[0];
+                const v1 = colorFn(t_elevation[ot])[0];
+                const v2 = colorFn(r_elevation[br])[0];
+                sourceMapColors[off] = sourceMapColors[off+1] = sourceMapColors[off+2] = v0;
+                sourceMapColors[off+3] = sourceMapColors[off+4] = sourceMapColors[off+5] = v1;
+                sourceMapColors[off+6] = sourceMapColors[off+7] = sourceMapColors[off+8] = v2;
+            } else {
+                const br = mesh.s_begin_r(s);
+                const [cr, cg, cb] = getRegionColor(br);
+                for (let j = 0; j < 3; j++) {
+                    sourceMapColors[off + j*3]     = cr;
+                    sourceMapColors[off + j*3 + 1] = cg;
+                    sourceMapColors[off + j*3 + 2] = cb;
+                }
+            }
+        }
+        clearMapProjectionPreview();
+    }
+
     // Update map mesh colors in-place (if map exists)
     if (state.mapMesh && state.mapFaceToSide) {
         const mapColorAttr = state.mapMesh.geometry.getAttribute('color');
         const mapColors = mapColorAttr.array;
         const fts = state.mapFaceToSide;
+        const sourceMapColors = state._mapTriangleColors;
 
         for (let f = 0; f < fts.length; f++) {
             const s = fts[f];
             const off = f * 9;
-            if (isSmooth) {
+            if (sourceMapColors) {
+                const src = s * 9;
+                for (let j = 0; j < 9; j++) mapColors[off + j] = sourceMapColors[src + j];
+            } else if (isSmooth) {
                 const it = mesh.s_inner_t(s);
                 const ot = mesh.s_outer_t(s);
                 const br = mesh.s_begin_r(s);

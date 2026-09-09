@@ -494,6 +494,177 @@ export function projectMapSegmentFromLonLat(lon0, lat0, lon1, lat1, params = get
     );
 }
 
+export function createMapProjectionProjector(params = getMapProjectionParams()) {
+    const orientation = orientationFromParams(params);
+    return {
+        id: params.id,
+        scale: params.scale,
+        wrap: params.wrap,
+        centerLon: params.centerLon || 0,
+        x0: orientation.x[0], x1: orientation.x[1], x2: orientation.x[2],
+        y0: orientation.y[0], y1: orientation.y[1], y2: orientation.y[2],
+        z0: orientation.z[0], z1: orientation.z[1], z2: orientation.z[2],
+        triScratch: new Float64Array(15),
+        segScratch: new Float64Array(10),
+    };
+}
+
+function rotateXyzInto(projector, x, y, z, scratch, off) {
+    const localX = x * projector.x0 + y * projector.x1 + z * projector.x2;
+    const localY = x * projector.y0 + y * projector.y1 + z * projector.y2;
+    const localZ = x * projector.z0 + y * projector.z1 + z * projector.z2;
+    scratch[off] = localX;
+    scratch[off + 1] = localY;
+    scratch[off + 2] = localZ;
+    scratch[off + 3] = Math.atan2(localX, localZ);
+    scratch[off + 4] = asin(localY);
+}
+
+function rotateLonLatInto(projector, lon, lat, scratch, off) {
+    const cosLat = Math.cos(lat);
+    rotateXyzInto(
+        projector,
+        cosLat * Math.sin(lon),
+        Math.sin(lat),
+        cosLat * Math.cos(lon),
+        scratch,
+        off
+    );
+}
+
+function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out, off, zOut) {
+    const scale = projector.scale;
+    switch (projector.id) {
+        case 'mercator':
+            out[off] = lambda * scale;
+            out[off + 1] = mercatorY(clamp(phi, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)) * scale;
+            out[off + 2] = zOut;
+            return true;
+        case 'naturalEarth1': {
+            const phi2 = phi * phi;
+            const phi4 = phi2 * phi2;
+            out[off] = lambda * (0.8707 - 0.131979 * phi2 + phi4 * (-0.013791 + phi4 * (0.003971 * phi2 - 0.001529 * phi4))) * scale;
+            out[off + 1] = phi * (1.007226 + phi2 * (0.015085 + phi4 * (-0.044475 + 0.028874 * phi2 - 0.005916 * phi4))) * scale;
+            out[off + 2] = zOut;
+            return true;
+        }
+        case 'equalEarth': {
+            const l = asin(EQ_M * Math.sin(phi));
+            const l2 = l * l;
+            const l6 = l2 * l2 * l2;
+            out[off] = lambda * Math.cos(l) / (EQ_M * (EQ_A1 + 3 * EQ_A2 * l2 + l6 * (7 * EQ_A3 + 9 * EQ_A4 * l2))) * scale;
+            out[off + 1] = l * (EQ_A1 + EQ_A2 * l2 + l6 * (EQ_A3 + EQ_A4 * l2)) * scale;
+            out[off + 2] = zOut;
+            return true;
+        }
+        case 'orthographic':
+            if (localZ < -EPS) return false;
+            out[off] = localX * scale;
+            out[off + 1] = localY * scale;
+            out[off + 2] = zOut;
+            return true;
+        case 'azimuthalEqualArea': {
+            if (localZ <= -1 + EPS) return false;
+            const k = Math.sqrt(2 / Math.max(EPS, 1 + localZ));
+            out[off] = k * localX * scale;
+            out[off + 1] = k * localY * scale;
+            out[off + 2] = zOut;
+            return true;
+        }
+        case 'stereographic': {
+            if (localZ <= -1 + EPS) return false;
+            const k = 2 / Math.max(EPS, 1 + localZ);
+            out[off] = k * localX * scale;
+            out[off + 1] = k * localY * scale;
+            out[off + 2] = zOut;
+            return true;
+        }
+        case 'gnomonic':
+            if (localZ <= EPS) return false;
+            out[off] = localX / localZ * scale;
+            out[off + 1] = localY / localZ * scale;
+            out[off + 2] = zOut;
+            return true;
+        case 'equirectangular':
+        default:
+            out[off] = lambda * scale;
+            out[off + 1] = phi * scale;
+            out[off + 2] = zOut;
+            return true;
+    }
+}
+
+function writeProjectedTriangleBatch(projector, scratch, out, off, zOut, wrapMode) {
+    let l0 = scratch[3], l1 = scratch[8], l2 = scratch[13];
+    if (wrapMode === 1) {
+        if (l0 < 0) l0 += TAU;
+        if (l1 < 0) l1 += TAU;
+        if (l2 < 0) l2 += TAU;
+    } else if (wrapMode === -1) {
+        if (l0 > 0) l0 -= TAU;
+        if (l1 > 0) l1 -= TAU;
+        if (l2 > 0) l2 -= TAU;
+    }
+    if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
+    if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
+    if (!projectRotatedInto(projector, l2, scratch[14], scratch[10], scratch[11], scratch[12], out, off + 6, zOut)) return 0;
+    return 1;
+}
+
+export function writeProjectedMapTriangleFromXyz(projector, sourceXyz, src, out, off, zOut = 0) {
+    const scratch = projector.triScratch;
+    rotateXyzInto(projector, sourceXyz[src], sourceXyz[src + 1], sourceXyz[src + 2], scratch, 0);
+    rotateXyzInto(projector, sourceXyz[src + 3], sourceXyz[src + 4], sourceXyz[src + 5], scratch, 5);
+    rotateXyzInto(projector, sourceXyz[src + 6], sourceXyz[src + 7], sourceXyz[src + 8], scratch, 10);
+
+    if (projector.wrap) {
+        const lon0 = scratch[3], lon1 = scratch[8], lon2 = scratch[13];
+        if (Math.max(lon0, lon1, lon2) - Math.min(lon0, lon1, lon2) > PI) {
+            let count = writeProjectedTriangleBatch(projector, scratch, out, off, zOut, 1);
+            count += writeProjectedTriangleBatch(projector, scratch, out, off + count * 9, zOut, -1);
+            return count;
+        }
+    }
+    return writeProjectedTriangleBatch(projector, scratch, out, off, zOut, 0);
+}
+
+function writeProjectedSegmentBatch(projector, scratch, out, off, zOut, wrapMode) {
+    let l0 = scratch[3], l1 = scratch[8];
+    if (wrapMode === 1) {
+        if (l0 < 0) l0 += TAU;
+        if (l1 < 0) l1 += TAU;
+    } else if (wrapMode === -1) {
+        if (l0 > 0) l0 -= TAU;
+        if (l1 > 0) l1 -= TAU;
+    }
+    if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
+    if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
+    return 1;
+}
+
+function writeProjectedSegment(projector, scratch, out, off, zOut) {
+    if (projector.wrap && Math.abs(scratch[3] - scratch[8]) > PI) {
+        let count = writeProjectedSegmentBatch(projector, scratch, out, off, zOut, 1);
+        count += writeProjectedSegmentBatch(projector, scratch, out, off + count * 6, zOut, -1);
+        return count;
+    }
+    return writeProjectedSegmentBatch(projector, scratch, out, off, zOut, 0);
+}
+
+export function writeProjectedMapSegmentFromXyz(projector, sourceSegments, src, out, off, zOut = 0) {
+    const scratch = projector.segScratch;
+    rotateXyzInto(projector, sourceSegments[src], sourceSegments[src + 1], sourceSegments[src + 2], scratch, 0);
+    rotateXyzInto(projector, sourceSegments[src + 3], sourceSegments[src + 4], sourceSegments[src + 5], scratch, 5);
+    return writeProjectedSegment(projector, scratch, out, off, zOut);
+}
+
+export function writeProjectedMapSegmentFromLonLat(projector, sourceSegments, src, out, off, zOut = 0) {
+    const scratch = projector.segScratch;
+    rotateLonLatInto(projector, sourceSegments[src], sourceSegments[src + 1], scratch, 0);
+    rotateLonLatInto(projector, sourceSegments[src + 2], sourceSegments[src + 3], scratch, 5);
+    return writeProjectedSegment(projector, scratch, out, off, zOut);
+}
+
 export function mapPointToXyz(x, y, params = getMapProjectionParams()) {
     const rawX = x / params.scale;
     const rawY = y / params.scale;
