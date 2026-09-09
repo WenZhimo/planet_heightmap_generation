@@ -6,6 +6,9 @@ const TAU = PI * 2;
 const DEG = PI / 180;
 const EPS = 1e-6;
 const MAX_MERCATOR_LAT = 85 * DEG;
+const AZIMUTHAL_EQUAL_AREA_MIN_Z = Math.cos((180 - 2) * DEG);
+const AZIMUTHAL_EQUAL_AREA_MAX_R = Math.sqrt(2 * (1 - AZIMUTHAL_EQUAL_AREA_MIN_Z));
+const AZIMUTHAL_EQUAL_AREA_MAX_RAW_EDGE = 0.32;
 
 const EQ_A1 = 1.340264;
 const EQ_A2 = -0.081106;
@@ -350,7 +353,7 @@ function rawForward(id, lambda, phi, z) {
             if (z < -EPS) return null;
             return [Math.cos(phi) * Math.sin(lambda), Math.sin(phi)];
         case 'azimuthalEqualArea': {
-            if (z <= -1 + EPS) return null;
+            if (z <= AZIMUTHAL_EQUAL_AREA_MIN_Z) return null;
             const k = Math.sqrt(2 / Math.max(EPS, 1 + z));
             return [k * Math.cos(phi) * Math.sin(lambda), k * Math.sin(phi)];
         }
@@ -564,7 +567,7 @@ function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out,
             out[off + 2] = zOut;
             return true;
         case 'azimuthalEqualArea': {
-            if (localZ <= -1 + EPS) return false;
+            if (localZ <= AZIMUTHAL_EQUAL_AREA_MIN_Z) return false;
             const k = Math.sqrt(2 / Math.max(EPS, 1 + localZ));
             out[off] = k * localX * scale;
             out[off + 1] = k * localY * scale;
@@ -594,6 +597,17 @@ function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out,
     }
 }
 
+function projectedEdgeExceeds(out, a, b, maxEdge2) {
+    const dx = out[a] - out[b];
+    const dy = out[a + 1] - out[b + 1];
+    return dx * dx + dy * dy > maxEdge2;
+}
+
+function azimuthalEqualAreaMaxEdge2(projector) {
+    const maxEdge = AZIMUTHAL_EQUAL_AREA_MAX_RAW_EDGE * projector.scale;
+    return maxEdge * maxEdge;
+}
+
 function writeProjectedTriangleBatch(projector, scratch, out, off, zOut, wrapMode) {
     let l0 = scratch[3], l1 = scratch[8], l2 = scratch[13];
     if (wrapMode === 1) {
@@ -608,6 +622,14 @@ function writeProjectedTriangleBatch(projector, scratch, out, off, zOut, wrapMod
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
     if (!projectRotatedInto(projector, l2, scratch[14], scratch[10], scratch[11], scratch[12], out, off + 6, zOut)) return 0;
+    if (projector.id === 'azimuthalEqualArea') {
+        const maxEdge2 = azimuthalEqualAreaMaxEdge2(projector);
+        if (
+            projectedEdgeExceeds(out, off, off + 3, maxEdge2) ||
+            projectedEdgeExceeds(out, off + 3, off + 6, maxEdge2) ||
+            projectedEdgeExceeds(out, off + 6, off, maxEdge2)
+        ) return 0;
+    }
     return 1;
 }
 
@@ -639,6 +661,8 @@ function writeProjectedSegmentBatch(projector, scratch, out, off, zOut, wrapMode
     }
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
+    if (projector.id === 'azimuthalEqualArea' &&
+        projectedEdgeExceeds(out, off, off + 3, azimuthalEqualAreaMaxEdge2(projector))) return 0;
     return 1;
 }
 
@@ -677,7 +701,7 @@ export function mapPointToXyz(x, y, params = getMapProjectionParams()) {
 
     if (params.id === 'azimuthalEqualArea') {
         const rho = Math.hypot(rawX, rawY);
-        if (rho > 2 + EPS) return null;
+        if (rho > AZIMUTHAL_EQUAL_AREA_MAX_R + EPS) return null;
         if (rho < EPS) return localToWorldVector(0, 0, 1, params);
         const c = 2 * Math.asin(clamp(rho / 2, -1, 1));
         const k = Math.sin(c) / rho;
