@@ -647,7 +647,6 @@ export function buildMapMesh() {
     state._mapFaceToSideBuffer = faceToSide;
     updateMapMeshProjection(projectionParams);
     scene.add(state.mapMesh);
-    buildMapProjectionPreviewMesh(projectionParams);
 
     updateSuperPlateBorders();
     buildMapGrid();
