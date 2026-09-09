@@ -290,15 +290,25 @@
                         <option value="equalEarth">Equal Earth 等面积</option>
                         <option value="orthographic">正射半球</option>
                         <option value="azimuthalEqualArea">方位等面积</option>
+                        <option value="stereographic">球极平射</option>
+                        <option value="gnomonic">心射投影</option>
                     </select>
                 </div>
                 <div class="cg" id="mapCenterLonGroup" style="display:none">
                     <label>中心经度 <span class="v" id="vMapCenterLon">0°</span></label>
-                    <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="5">
+                    <input type="range" id="sMapCenterLon" min="-180" max="180" value="0" step="1">
                 </div>
                 <div class="cg" id="mapCenterLatGroup" style="display:none">
                     <label>中心纬度 <span class="v" id="vMapCenterLat">0°</span></label>
-                    <input type="range" id="sMapCenterLat" min="-85" max="85" value="0" step="5">
+                    <input type="range" id="sMapCenterLat" min="-85" max="85" value="0" step="1">
+                </div>
+                <div class="cg" id="mapRotationGroup" style="display:none">
+                    <label>地图倾角 γ <span class="v" id="vMapRotation">0°</span></label>
+                    <input type="range" id="sMapRotation" min="-180" max="180" value="0" step="1">
+                </div>
+                <div class="cg" id="mapZoomGroup" style="display:none">
+                    <label>地图缩放 <span class="v" id="vMapZoom">1.00×</span></label>
+                    <input type="range" id="sMapZoom" min="0.5" max="8" value="1" step="0.05">
                 </div>
                 <div class="cg" id="mapViewResetGroup" style="display:none">
                     <button id="mapViewReset" type="button">重置地图视角</button>

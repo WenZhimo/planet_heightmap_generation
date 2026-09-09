@@ -251,12 +251,24 @@ let _mapZoomTarget = mapCamera.zoom;
 const MAP_ZOOM_STEP   = 0.92;
 const MAP_ZOOM_SMOOTH = 0.12;
 
+export function getMapCameraZoom() {
+    return _mapZoomTarget;
+}
+
+export function setMapCameraZoom(zoom, { immediate = false } = {}) {
+    _mapZoomTarget = THREE.MathUtils.clamp(zoom, mapCtrl.minZoom, mapCtrl.maxZoom);
+    if (immediate) {
+        mapCamera.zoom = _mapZoomTarget;
+        mapCamera.updateProjectionMatrix();
+    }
+    window.dispatchEvent(new CustomEvent('map-zoom-changed', { detail: { zoom: _mapZoomTarget } }));
+}
+
 canvas.addEventListener('wheel', (e) => {
     if (!mapCtrl.enabled) return;
     e.preventDefault();
     const dir = Math.sign(e.deltaY);
-    _mapZoomTarget *= dir < 0 ? 1 / MAP_ZOOM_STEP : MAP_ZOOM_STEP;
-    _mapZoomTarget = THREE.MathUtils.clamp(_mapZoomTarget, mapCtrl.minZoom, mapCtrl.maxZoom);
+    setMapCameraZoom(_mapZoomTarget * (dir < 0 ? 1 / MAP_ZOOM_STEP : MAP_ZOOM_STEP));
 }, { passive: false });
 
 // Pinch-to-zoom for map (touch)
@@ -274,8 +286,7 @@ canvas.addEventListener('touchmove', (e) => {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const ratio = dist / _mapPinchDist;
-    _mapZoomTarget *= ratio;
-    _mapZoomTarget = THREE.MathUtils.clamp(_mapZoomTarget, mapCtrl.minZoom, mapCtrl.maxZoom);
+    setMapCameraZoom(_mapZoomTarget * ratio);
     _mapPinchDist = dist;
 }, { passive: true });
 
@@ -290,8 +301,7 @@ export function tickMapZoom() {
 }
 
 export function resetMapCameraView() {
-    _mapZoomTarget = 1;
-    mapCamera.zoom = 1;
+    setMapCameraZoom(1, { immediate: true });
     mapCamera.position.set(0, 0, 5);
     mapCamera.lookAt(0, 0, 0);
     mapCtrl.target.set(0, 0, 0);

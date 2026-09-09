@@ -27,6 +27,8 @@ export const state = {
     mapProjection: 'equirectangular',
     mapCenterLon: 0,
     mapCenterLat: 0,
+    mapRotation: 0,
+    mapZoom: 1,
     dragStart: null,
     debugLayer: '',
     isTouchDevice: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),

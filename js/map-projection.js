@@ -20,6 +20,8 @@ export const MAP_PROJECTIONS = [
     { id: 'equalEarth', label: 'Equal Earth 等面积' },
     { id: 'orthographic', label: '正射半球' },
     { id: 'azimuthalEqualArea', label: '方位等面积' },
+    { id: 'stereographic', label: '球极平射' },
+    { id: 'gnomonic', label: '心射投影' },
 ];
 
 const PROJECTION_IDS = new Set(MAP_PROJECTIONS.map(p => p.id));
@@ -73,6 +75,10 @@ function projectionScale(id) {
             return 0.98;
         case 'azimuthalEqualArea':
             return 0.49;
+        case 'stereographic':
+            return 0.28;
+        case 'gnomonic':
+            return 0.62;
         case 'equirectangular':
         default:
             return 2 / PI;
@@ -85,6 +91,7 @@ export function getMapProjectionParams() {
         id,
         centerLon: state.mapCenterLon || 0,
         centerLat: clamp(state.mapCenterLat || 0, -HALF_PI, HALF_PI),
+        rotation: state.mapRotation || 0,
         scale: projectionScale(id),
         wrap: id === 'equirectangular' || id === 'mercator' || id === 'naturalEarth1' || id === 'equalEarth',
     };
@@ -166,6 +173,128 @@ function lonLatToVector(lon, lat) {
     ];
 }
 
+function dot3(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross3(a, b) {
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+}
+
+function normalize3(v) {
+    const len = Math.hypot(v[0], v[1], v[2]);
+    return len > EPS ? [v[0] / len, v[1] / len, v[2] / len] : null;
+}
+
+function rotateVectorAroundAxis(v, axis, angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const d = dot3(axis, v);
+    return [
+        v[0] * c + (axis[1] * v[2] - axis[2] * v[1]) * s + axis[0] * d * (1 - c),
+        v[1] * c + (axis[2] * v[0] - axis[0] * v[2]) * s + axis[1] * d * (1 - c),
+        v[2] * c + (axis[0] * v[1] - axis[1] * v[0]) * s + axis[2] * d * (1 - c),
+    ];
+}
+
+function orientationFromParams(params) {
+    const centerLon = params.centerLon || 0;
+    const centerLat = clamp(params.centerLat || 0, -HALF_PI, HALF_PI);
+    const rotation = params.rotation || 0;
+    const sinLon = Math.sin(centerLon);
+    const cosLon = Math.cos(centerLon);
+    const sinLat = Math.sin(centerLat);
+    const cosLat = Math.cos(centerLat);
+    const sinRot = Math.sin(rotation);
+    const cosRot = Math.cos(rotation);
+
+    const east = [cosLon, 0, -sinLon];
+    const north = [-sinLat * sinLon, cosLat, -sinLat * cosLon];
+    const center = [cosLat * sinLon, sinLat, cosLat * cosLon];
+
+    return {
+        x: [
+            cosRot * east[0] - sinRot * north[0],
+            cosRot * east[1] - sinRot * north[1],
+            cosRot * east[2] - sinRot * north[2],
+        ],
+        y: [
+            sinRot * east[0] + cosRot * north[0],
+            sinRot * east[1] + cosRot * north[1],
+            sinRot * east[2] + cosRot * north[2],
+        ],
+        z: center,
+    };
+}
+
+function paramsFromOrientation(orientation) {
+    const center = normalize3(orientation.z);
+    if (!center) return null;
+    const centerLon = wrapRadians(Math.atan2(center[0], center[2]));
+    const centerLat = asin(center[1]);
+    const sinLon = Math.sin(centerLon);
+    const cosLon = Math.cos(centerLon);
+    const sinLat = Math.sin(centerLat);
+    const cosLat = Math.cos(centerLat);
+    const east = [cosLon, 0, -sinLon];
+    const north = [-sinLat * sinLon, cosLat, -sinLat * cosLon];
+    const screenX = normalize3(orientation.x);
+    if (!screenX) return null;
+    const rotation = Math.atan2(-dot3(screenX, north), dot3(screenX, east));
+    return {
+        centerLon,
+        centerLat,
+        rotation: wrapRadians(Number.isFinite(rotation) ? rotation : 0),
+    };
+}
+
+function rotateOrientationBetweenVectors(from, to, orientation) {
+    const a = normalize3(from);
+    const b = normalize3(to);
+    if (!a || !b) return null;
+    const d = clamp(dot3(a, b), -1, 1);
+    if (d > 1 - EPS) return orientation;
+
+    let axis = normalize3(cross3(a, b));
+    if (!axis) {
+        axis = normalize3(cross3(a, [0, 1, 0])) || normalize3(cross3(a, [1, 0, 0]));
+    }
+    if (!axis) return null;
+
+    const angle = Math.acos(d);
+    return {
+        x: rotateVectorAroundAxis(orientation.x, axis, angle),
+        y: rotateVectorAroundAxis(orientation.y, axis, angle),
+        z: rotateVectorAroundAxis(orientation.z, axis, angle),
+    };
+}
+
+export function rotateMapProjectionParamsByDrag(startParams, startPoint, currentPoint, fallbackCenter = { x: 0, y: 0 }) {
+    const startVec = mapPointToXyz(startPoint.x, startPoint.y, startParams);
+    const currentVec = mapPointToXyz(currentPoint.x, currentPoint.y, startParams);
+    if (startVec && currentVec) {
+        const rotated = rotateOrientationBetweenVectors(currentVec, startVec, orientationFromParams(startParams));
+        const next = rotated ? paramsFromOrientation(rotated) : null;
+        if (next) return next;
+    }
+
+    const startAngle = Math.atan2(startPoint.y - fallbackCenter.y, startPoint.x - fallbackCenter.x);
+    const currentAngle = Math.atan2(currentPoint.y - fallbackCenter.y, currentPoint.x - fallbackCenter.x);
+    if (!Number.isFinite(startAngle) || !Number.isFinite(currentAngle)) return null;
+    const nearCenter = Math.hypot(startPoint.x - fallbackCenter.x, startPoint.y - fallbackCenter.y) < EPS ||
+        Math.hypot(currentPoint.x - fallbackCenter.x, currentPoint.y - fallbackCenter.y) < EPS;
+    if (nearCenter) return null;
+    return {
+        centerLon: startParams.centerLon || 0,
+        centerLat: startParams.centerLat || 0,
+        rotation: wrapRadians((startParams.rotation || 0) + currentAngle - startAngle),
+    };
+}
+
 export function rotateLonLatToMap(lon, lat, params = getMapProjectionParams()) {
     const dlon = wrapRadians(lon - params.centerLon);
     const sinLat = Math.sin(lat);
@@ -176,13 +305,17 @@ export function rotateLonLatToMap(lon, lat, params = getMapProjectionParams()) {
     const localX = cosLat * Math.sin(dlon);
     const localY = cosCenter * sinLat - sinCenter * cosLat * cosDlon;
     const localZ = sinCenter * sinLat + cosCenter * cosLat * cosDlon;
+    const sinRot = Math.sin(params.rotation || 0);
+    const cosRot = Math.cos(params.rotation || 0);
+    const rotatedX = cosRot * localX - sinRot * localY;
+    const rotatedY = sinRot * localX + cosRot * localY;
 
     return {
-        x: localX,
-        y: localY,
+        x: rotatedX,
+        y: rotatedY,
         z: localZ,
-        lambda: Math.atan2(localX, localZ),
-        phi: asin(localY),
+        lambda: Math.atan2(rotatedX, localZ),
+        phi: asin(rotatedY),
     };
 }
 
@@ -192,12 +325,16 @@ export function rotateXyzToMap(x, y, z, params = getMapProjectionParams()) {
 }
 
 function localToWorldVector(localX, localY, localZ, params) {
+    const sinRot = Math.sin(params.rotation || 0);
+    const cosRot = Math.cos(params.rotation || 0);
+    const unrotatedX = cosRot * localX + sinRot * localY;
+    const unrotatedY = -sinRot * localX + cosRot * localY;
     const sinCenter = Math.sin(params.centerLat);
     const cosCenter = Math.cos(params.centerLat);
-    const sinLat = sinCenter * localZ + cosCenter * localY;
+    const sinLat = sinCenter * localZ + cosCenter * unrotatedY;
     const lat = asin(sinLat);
-    const h = cosCenter * localZ - sinCenter * localY;
-    const lon = wrapRadians(params.centerLon + Math.atan2(localX, h));
+    const h = cosCenter * localZ - sinCenter * unrotatedY;
+    const lon = wrapRadians(params.centerLon + Math.atan2(unrotatedX, h));
     return lonLatToVector(lon, lat);
 }
 
@@ -217,6 +354,18 @@ function rawForward(id, lambda, phi, z) {
             const k = Math.sqrt(2 / Math.max(EPS, 1 + z));
             return [k * Math.cos(phi) * Math.sin(lambda), k * Math.sin(phi)];
         }
+        case 'stereographic': {
+            if (z <= -1 + EPS) return null;
+            const k = 2 / Math.max(EPS, 1 + z);
+            return [k * Math.cos(phi) * Math.sin(lambda), k * Math.sin(phi)];
+        }
+        case 'gnomonic': {
+            if (z <= EPS) return null;
+            return [
+                Math.cos(phi) * Math.sin(lambda) / z,
+                Math.sin(phi) / z,
+            ];
+        }
         case 'equirectangular':
         default:
             return [lambda, phi];
@@ -235,6 +384,20 @@ function rawInvert(id, x, y) {
         case 'equirectangular':
             if (Math.abs(x) > PI + EPS || Math.abs(y) > HALF_PI + EPS) return null;
             return [x, y];
+        case 'stereographic': {
+            const rho = Math.hypot(x, y);
+            if (rho < EPS) return [0, 0];
+            const c = 2 * Math.atan(rho / 2);
+            const sinc = Math.sin(c);
+            return [Math.atan2(x * sinc, rho * Math.cos(c)), asin(y * sinc / rho)];
+        }
+        case 'gnomonic': {
+            const rho = Math.hypot(x, y);
+            if (rho < EPS) return [0, 0];
+            const c = Math.atan(rho);
+            const sinc = Math.sin(c);
+            return [Math.atan2(x * sinc, rho * Math.cos(c)), asin(y * sinc / rho)];
+        }
         default:
             return null;
     }

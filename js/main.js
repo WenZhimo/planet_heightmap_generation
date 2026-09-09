@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera, resetMapCameraView } from './scene.js';
+         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera,
+         resetMapCameraView, getMapCameraZoom, setMapCameraZoom } from './scene.js';
 import { state } from './state.js';
 import { generate, reapplyViaWorker, computeClimateViaWorker, editRecomputeViaWorker } from './generate.js';
 import { encodePlanetCode, decodePlanetCode } from './planet-code.js';
@@ -12,7 +13,8 @@ import { setupEditMode } from './edit-mode.js';
 import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
-import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams } from './map-projection.js';
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams,
+         rotateMapProjectionParamsByDrag } from './map-projection.js';
 
 // Slider value displays + stale tracking
 const sliderIds = ['sN','sP','sCn','sJ','sNs','sCsv','sLc'];
@@ -658,13 +660,15 @@ function getCurrentMapCodeParams() {
         mapProjection: sMapProjection?.value || state.mapProjection || 'equirectangular',
         mapCenterLon: +(sMapCenterLon?.value ?? 0),
         mapCenterLat: +(sMapCenterLat?.value ?? 0),
+        mapRotation: +(sMapRotation?.value ?? 0),
+        mapZoom: +(sMapZoom?.value ?? getMapCameraZoom()),
     };
 }
 
 /** Encode current planet state and update the seed input + URL hash. */
 function updatePlanetCode(flash) {
     if (planetCodeRefreshSuppressed) return;
-    const { mapProjection, mapCenterLon, mapCenterLat } = getCurrentMapCodeParams();
+    const { mapProjection, mapCenterLon, mapCenterLat, mapRotation, mapZoom } = getCurrentMapCodeParams();
     const code = encodePlanetCode(
         getPlanetCodeSeed(),
         detailFromSlider(+document.getElementById('sN').value),
@@ -686,7 +690,9 @@ function updatePlanetCode(flash) {
         getEncodedToggledIndices(),
         mapProjection,
         mapCenterLon,
-        mapCenterLat
+        mapCenterLat,
+        mapRotation,
+        mapZoom
     );
     currentCode = code;
     seedInput.value = code;
@@ -784,6 +790,16 @@ function applyMapCodeParams(params) {
         state.mapCenterLat = lat * Math.PI / 180;
     }
 
+    if (sMapRotation && vMapRotation) {
+        const rotation = Number.isFinite(params.mapRotation) ? params.mapRotation : 0;
+        setMapRotationControls(rotation, { refresh: 'none' });
+    }
+
+    if (sMapZoom && vMapZoom) {
+        const zoom = Number.isFinite(params.mapZoom) ? params.mapZoom : 1;
+        setMapZoomControls(zoom, { immediate: true });
+    }
+
     updateViewHint();
 }
 
@@ -863,12 +879,21 @@ const vMapCenterLon = document.getElementById('vMapCenterLon');
 const mapCenterLatGroup = document.getElementById('mapCenterLatGroup');
 const sMapCenterLat = document.getElementById('sMapCenterLat');
 const vMapCenterLat = document.getElementById('vMapCenterLat');
+const mapRotationGroup = document.getElementById('mapRotationGroup');
+const sMapRotation = document.getElementById('sMapRotation');
+const vMapRotation = document.getElementById('vMapRotation');
+const mapZoomGroup = document.getElementById('mapZoomGroup');
+const sMapZoom = document.getElementById('sMapZoom');
+const vMapZoom = document.getElementById('vMapZoom');
 const mapViewResetGroup = document.getElementById('mapViewResetGroup');
 const mapViewResetBtn = document.getElementById('mapViewReset');
-const MAP_VIEW_DEFAULTS = { projection: 'equirectangular', lon: 0, lat: 0 };
+const MAP_VIEW_DEFAULTS = { projection: 'equirectangular', lon: 0, lat: 0, rotation: 0, zoom: 1 };
 const MAP_DRAG_MIN_DISTANCE = 4;
+const RAD_TO_DEG = 180 / Math.PI;
+const DEG_TO_RAD = Math.PI / 180;
 let mapProjectionRefreshTimer = 0;
 let mapProjectionRefreshToken = 0;
+let mapZoomSyncing = false;
 
 function rebuildMapProjectionView() {
     if (!state.mapMode || !state.curData) return;
@@ -940,6 +965,10 @@ function wrapMapCenterLon(deg) {
     return wrapped;
 }
 
+function formatMapZoomLabel(value) {
+    return Number(value).toFixed(2) + '×';
+}
+
 function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true } = {}) {
     const snappedLon = snapMapCenter(wrapMapCenterLon(lon), sMapCenterLon);
     const snappedLat = snapMapCenter(lat, sMapCenterLat);
@@ -954,13 +983,40 @@ function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true }
     else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
 }
 
+function setMapRotationControls(rotation, { refresh = 'schedule', overlay = true } = {}) {
+    const snappedRotation = snapMapCenter(wrapMapCenterLon(rotation), sMapRotation);
+    sMapRotation.value = snappedRotation;
+    vMapRotation.textContent = `${snappedRotation}°`;
+    state.mapRotation = snappedRotation * DEG_TO_RAD;
+    updatePlanetCode(false);
+    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function setMapOrientationControls(lon, lat, rotation, { refresh = 'schedule', overlay = true } = {}) {
+    setMapCenterControls(lon, lat, { refresh: 'none' });
+    setMapRotationControls(rotation, { refresh: 'none' });
+    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function setMapZoomControls(zoom, { immediate = false, syncCamera = true } = {}) {
+    const snappedZoom = snapMapCenter(zoom, sMapZoom);
+    sMapZoom.value = snappedZoom;
+    vMapZoom.textContent = formatMapZoomLabel(snappedZoom);
+    state.mapZoom = snappedZoom;
+    if (syncCamera && !mapZoomSyncing) setMapCameraZoom(snappedZoom, { immediate });
+    updatePlanetCode(false);
+}
+
 function resetMapViewControls() {
     if (sMapProjection) {
         sMapProjection.value = MAP_VIEW_DEFAULTS.projection;
         state.mapProjection = MAP_VIEW_DEFAULTS.projection;
     }
     resetMapCameraView();
-    setMapCenterControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, { refresh: 'none' });
+    setMapOrientationControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, MAP_VIEW_DEFAULTS.rotation, { refresh: 'none' });
+    setMapZoomControls(MAP_VIEW_DEFAULTS.zoom, { immediate: true });
     rebuildMapProjectionViewWithOverlay('正在重置地图视角…');
     updateViewHint();
 }
@@ -991,6 +1047,37 @@ sMapCenterLat.addEventListener('change', () => {
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
+if (sMapRotation) {
+    sMapRotation.addEventListener('input', () => {
+        setMapRotationControls(+sMapRotation.value);
+    });
+
+    sMapRotation.addEventListener('change', () => {
+        updatePlanetCode(false);
+        rebuildMapProjectionViewWithOverlay('正在调整地图倾角…');
+    });
+}
+
+if (sMapZoom) {
+    sMapZoom.addEventListener('input', () => {
+        setMapZoomControls(+sMapZoom.value);
+    });
+}
+
+window.addEventListener('map-zoom-changed', (e) => {
+    const zoom = e.detail?.zoom;
+    if (!Number.isFinite(zoom) || !sMapZoom) return;
+    if (mapZoomSyncing) return;
+    mapZoomSyncing = true;
+    try {
+        const snappedZoom = snapMapCenter(zoom, sMapZoom);
+        setMapZoomControls(snappedZoom, { syncCamera: false });
+        if (Math.abs(snappedZoom - zoom) > 0.0001) setMapCameraZoom(snappedZoom);
+    } finally {
+        mapZoomSyncing = false;
+    }
+});
+
 if (mapViewResetBtn) {
     mapViewResetBtn.addEventListener('click', resetMapViewControls);
 }
@@ -1002,6 +1089,17 @@ function initMapCenterDrag() {
     function canDragMapCenter(e) {
         return state.mapMode && state.curData && e.button === 0 && !e.ctrlKey &&
             !(state.isTouchDevice && state.editMode);
+    }
+
+    function pointerToMapPoint(e) {
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        const ndcX = (e.clientX - rect.left) / rect.width * 2 - 1;
+        const ndcY = -((e.clientY - rect.top) / rect.height * 2 - 1);
+        return {
+            x: mapCamera.position.x + ndcX * (mapCamera.right - mapCamera.left) / (2 * mapCamera.zoom),
+            y: mapCamera.position.y + ndcY * (mapCamera.top - mapCamera.bottom) / (2 * mapCamera.zoom),
+        };
     }
 
     function cancelDrag() {
@@ -1019,17 +1117,15 @@ function initMapCenterDrag() {
             cancelDrag();
             return;
         }
-        const rect = canvas.getBoundingClientRect();
+        const startPoint = pointerToMapPoint(e);
+        if (!startPoint) return;
         const params = getMapProjectionParams();
         drag = {
             id: e.pointerId,
             startX: e.clientX,
             startY: e.clientY,
-            startLon: +sMapCenterLon.value,
-            startLat: +sMapCenterLat.value,
-            scale: params.scale,
-            worldPerPixelX: (mapCamera.right - mapCamera.left) / rect.width / mapCamera.zoom,
-            worldPerPixelY: (mapCamera.top - mapCamera.bottom) / rect.height / mapCamera.zoom,
+            startPoint,
+            startParams: { ...params },
             moved: false,
         };
         e.preventDefault();
@@ -1043,10 +1139,18 @@ function initMapCenterDrag() {
         const dx = e.clientX - drag.startX;
         const dy = e.clientY - drag.startY;
         drag.moved = drag.moved || Math.hypot(dx, dy) >= MAP_DRAG_MIN_DISTANCE;
-        const degPerWorldUnit = 180 / Math.PI / drag.scale;
-        const lon = drag.startLon - dx * drag.worldPerPixelX * degPerWorldUnit;
-        const lat = drag.startLat + dy * drag.worldPerPixelY * degPerWorldUnit;
-        setMapCenterControls(lon, lat, { overlay: false });
+        const currentPoint = pointerToMapPoint(e);
+        if (currentPoint) {
+            const next = rotateMapProjectionParamsByDrag(drag.startParams, drag.startPoint, currentPoint);
+            if (next) {
+                setMapOrientationControls(
+                    next.centerLon * RAD_TO_DEG,
+                    next.centerLat * RAD_TO_DEG,
+                    next.rotation * RAD_TO_DEG,
+                    { overlay: false }
+                );
+            }
+        }
         e.preventDefault();
         e.stopImmediatePropagation();
     }, true);
@@ -1086,7 +1190,7 @@ function updateViewHint() {
         ? '拖拽旋转 · 双指缩放 · 使用编辑按钮重塑'
         : '拖拽旋转 · 滚轮缩放 · Ctrl 点击重塑大陆';
     const hint = state.mapMode
-        ? `拖拽调整中心经纬度 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
+        ? `拖拽旋转投影 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
         : state.freeCameraMode
             ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
             : globeHint;
@@ -1165,6 +1269,8 @@ function setViewMode(mode) {
         mapProjectionGroup.style.display = '';
         mapCenterLonGroup.style.display = '';
         mapCenterLatGroup.style.display = '';
+        if (mapRotationGroup) mapRotationGroup.style.display = '';
+        if (mapZoomGroup) mapZoomGroup.style.display = '';
         if (mapViewResetGroup) mapViewResetGroup.style.display = '';
     } else {
         if (state.planetMesh) state.planetMesh.visible = true;
@@ -1197,6 +1303,8 @@ function setViewMode(mode) {
         mapProjectionGroup.style.display = 'none';
         mapCenterLonGroup.style.display = 'none';
         mapCenterLatGroup.style.display = 'none';
+        if (mapRotationGroup) mapRotationGroup.style.display = 'none';
+        if (mapZoomGroup) mapZoomGroup.style.display = 'none';
         if (mapViewResetGroup) mapViewResetGroup.style.display = 'none';
     }
 
