@@ -4,14 +4,14 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera } from './scene.js';
+         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera, resetMapCameraView } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
 import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, rebuildGrids, exportMap, exportWorldBundle, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
-import { formatLatLabel, formatLonLabel, getMapProjectionLabel, mapPointToXyz } from './map-projection.js';
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams, mapPointToXyz } from './map-projection.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -548,6 +548,10 @@ const vMapCenterLon = document.getElementById('vMapCenterLon');
 const mapCenterLatGroup = document.getElementById('mapCenterLatGroup');
 const sMapCenterLat = document.getElementById('sMapCenterLat');
 const vMapCenterLat = document.getElementById('vMapCenterLat');
+const mapViewResetGroup = document.getElementById('mapViewResetGroup');
+const mapViewResetBtn = document.getElementById('mapViewReset');
+const MAP_VIEW_DEFAULTS = { projection: 'equirectangular', lon: 0, lat: 0 };
+const MAP_DRAG_MIN_DISTANCE = 4;
 let mapProjectionRefreshTimer = 0;
 let mapProjectionRefreshToken = 0;
 
@@ -588,13 +592,61 @@ function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影�
     }, 50);
 }
 
-function scheduleMapProjectionRefresh() {
+function scheduleMapProjectionRefresh({ overlay = true, debounce = true, label = '正在调整地图视角…' } = {}) {
     if (!state.mapMode) return;
-    if (mapProjectionRefreshTimer) clearTimeout(mapProjectionRefreshTimer);
+    if (mapProjectionRefreshTimer) {
+        if (!debounce) return;
+        clearTimeout(mapProjectionRefreshTimer);
+    }
     mapProjectionRefreshTimer = setTimeout(() => {
         mapProjectionRefreshTimer = 0;
-        rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
-    }, 180);
+        if (overlay) rebuildMapProjectionViewWithOverlay(label);
+        else rebuildMapProjectionView();
+    }, overlay ? 180 : 80);
+}
+
+function clampMapCenter(value, input) {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    return Math.max(min, Math.min(max, value));
+}
+
+function snapMapCenter(value, input) {
+    const min = Number(input.min);
+    const step = Number(input.step) || 1;
+    const decimals = step < 1 ? String(step).split('.')[1].length : 0;
+    const snapped = min + Math.round((value - min) / step) * step;
+    return Number(clampMapCenter(snapped, input).toFixed(decimals));
+}
+
+function wrapMapCenterLon(deg) {
+    let wrapped = ((deg + 180) % 360 + 360) % 360 - 180;
+    if (wrapped === -180 && deg > 0) wrapped = 180;
+    return wrapped;
+}
+
+function setMapCenterControls(lon, lat, { refresh = 'schedule', overlay = true } = {}) {
+    const snappedLon = snapMapCenter(wrapMapCenterLon(lon), sMapCenterLon);
+    const snappedLat = snapMapCenter(lat, sMapCenterLat);
+    sMapCenterLon.value = snappedLon;
+    vMapCenterLon.textContent = formatLonLabel(snappedLon);
+    state.mapCenterLon = snappedLon * Math.PI / 180;
+    sMapCenterLat.value = snappedLat;
+    vMapCenterLat.textContent = formatLatLabel(snappedLat);
+    state.mapCenterLat = snappedLat * Math.PI / 180;
+    if (refresh === 'immediate') rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function resetMapViewControls() {
+    if (sMapProjection) {
+        sMapProjection.value = MAP_VIEW_DEFAULTS.projection;
+        state.mapProjection = MAP_VIEW_DEFAULTS.projection;
+    }
+    resetMapCameraView();
+    setMapCenterControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, { refresh: 'none' });
+    rebuildMapProjectionViewWithOverlay('正在重置地图视角…');
+    updateViewHint();
 }
 
 if (sMapProjection) {
@@ -605,10 +657,7 @@ if (sMapProjection) {
 }
 
 sMapCenterLon.addEventListener('input', () => {
-    const lon = +sMapCenterLon.value;
-    vMapCenterLon.textContent = formatLonLabel(lon);
-    state.mapCenterLon = lon * Math.PI / 180;
-    scheduleMapProjectionRefresh();
+    setMapCenterControls(+sMapCenterLon.value, +sMapCenterLat.value);
 });
 
 sMapCenterLon.addEventListener('change', () => {
@@ -616,22 +665,101 @@ sMapCenterLon.addEventListener('change', () => {
 });
 
 sMapCenterLat.addEventListener('input', () => {
-    const lat = +sMapCenterLat.value;
-    vMapCenterLat.textContent = formatLatLabel(lat);
-    state.mapCenterLat = lat * Math.PI / 180;
-    scheduleMapProjectionRefresh();
+    setMapCenterControls(+sMapCenterLon.value, +sMapCenterLat.value);
 });
 
 sMapCenterLat.addEventListener('change', () => {
     rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
 });
 
+if (mapViewResetBtn) {
+    mapViewResetBtn.addEventListener('click', resetMapViewControls);
+}
+
+function initMapCenterDrag() {
+    let drag = null;
+    const activePointers = new Set();
+
+    function canDragMapCenter(e) {
+        return state.mapMode && state.curData && e.button === 0 && !e.ctrlKey &&
+            !(state.isTouchDevice && state.editMode);
+    }
+
+    function cancelDrag() {
+        if (!drag) return;
+        const id = drag.id;
+        drag = null;
+        canvas.classList.remove('map-center-dragging');
+        try { canvas.releasePointerCapture(id); } catch (_) {}
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+        if (!canDragMapCenter(e)) return;
+        activePointers.add(e.pointerId);
+        if (e.pointerType === 'touch' && activePointers.size > 1) {
+            cancelDrag();
+            return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const params = getMapProjectionParams();
+        drag = {
+            id: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startLon: +sMapCenterLon.value,
+            startLat: +sMapCenterLat.value,
+            scale: params.scale,
+            worldPerPixelX: (mapCamera.right - mapCamera.left) / rect.width / mapCamera.zoom,
+            worldPerPixelY: (mapCamera.top - mapCamera.bottom) / rect.height / mapCamera.zoom,
+            moved: false,
+        };
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        canvas.classList.add('map-center-dragging');
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    }, true);
+
+    canvas.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        drag.moved = drag.moved || Math.hypot(dx, dy) >= MAP_DRAG_MIN_DISTANCE;
+        const degPerWorldUnit = 180 / Math.PI / drag.scale;
+        const lon = drag.startLon - dx * drag.worldPerPixelX * degPerWorldUnit;
+        const lat = drag.startLat + dy * drag.worldPerPixelY * degPerWorldUnit;
+        setMapCenterControls(lon, lat, { overlay: false });
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }, true);
+
+    function finishDrag(e) {
+        activePointers.delete(e.pointerId);
+        if (!drag || e.pointerId !== drag.id) return;
+        const moved = drag.moved;
+        drag = null;
+        canvas.classList.remove('map-center-dragging');
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+        if (mapProjectionRefreshTimer) {
+            clearTimeout(mapProjectionRefreshTimer);
+            mapProjectionRefreshTimer = 0;
+        }
+        if (moved) rebuildMapProjectionViewWithOverlay('正在调整地图视角…');
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }
+
+    canvas.addEventListener('pointerup', finishDrag, true);
+    canvas.addEventListener('pointercancel', finishDrag, true);
+}
+
+initMapCenterDrag();
+
 function updateViewHint() {
     const globeHint = state.isTouchDevice
         ? '拖拽旋转 · 双指缩放'
         : '拖拽旋转 · 滚轮缩放';
     const hint = state.mapMode
-        ? `拖拽平移地图 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
+        ? `拖拽调整中心经纬度 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
         : state.freeCameraMode
             ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
             : globeHint;
@@ -689,6 +817,7 @@ function setViewMode(mode) {
         mapProjectionGroup.style.display = '';
         mapCenterLonGroup.style.display = '';
         mapCenterLatGroup.style.display = '';
+        if (mapViewResetGroup) mapViewResetGroup.style.display = '';
     } else {
         if (state.planetMesh) state.planetMesh.visible = true;
         atmosMesh.visible = true;
@@ -718,6 +847,7 @@ function setViewMode(mode) {
         mapProjectionGroup.style.display = 'none';
         mapCenterLonGroup.style.display = 'none';
         mapCenterLatGroup.style.display = 'none';
+        if (mapViewResetGroup) mapViewResetGroup.style.display = 'none';
     }
 
     updateSuperPlateBorders();

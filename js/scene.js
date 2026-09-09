@@ -234,6 +234,7 @@ updateMapCameraFrustum();
 
 export const mapCtrl = new OrbitControls(mapCamera, canvas);
 mapCtrl.enableRotate = false;
+mapCtrl.enablePan = false;
 mapCtrl.enableDamping = true;
 mapCtrl.dampingFactor = 0.09;
 mapCtrl.panSpeed = 1.4;
@@ -286,4 +287,14 @@ export function tickMapZoom() {
     if (Math.abs(next - cur) < 0.0001) return;
     mapCamera.zoom = next;
     mapCamera.updateProjectionMatrix();
+}
+
+export function resetMapCameraView() {
+    _mapZoomTarget = 1;
+    mapCamera.zoom = 1;
+    mapCamera.position.set(0, 0, 5);
+    mapCamera.lookAt(0, 0, 0);
+    mapCtrl.target.set(0, 0, 0);
+    updateMapCameraFrustum();
+    mapCtrl.update();
 }

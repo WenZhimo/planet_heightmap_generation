@@ -4,6 +4,7 @@ body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, s
     position: fixed; inset: 0;
     display: block;
     z-index: 1;
+    touch-action: none;
 }
 #canvas.empty {
     opacity: 0;
@@ -299,6 +300,25 @@ button#generate.generating {
 .map-tab:hover { color: #bcd; }
 .map-tab.active {
     background: rgba(68,136,255,0.18); color: #8bf;
+}
+
+#mapViewReset {
+    width: 100%;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.06);
+    color: #9ab;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+#mapViewReset:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.18);
+    color: #fff;
 }
 
 /* Legend container */
