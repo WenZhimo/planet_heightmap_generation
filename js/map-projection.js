@@ -9,6 +9,10 @@ const MAX_MERCATOR_LAT = 85 * DEG;
 const AZIMUTHAL_EQUAL_AREA_MIN_Z = Math.cos((180 - 2) * DEG);
 const AZIMUTHAL_EQUAL_AREA_MAX_R = Math.sqrt(2 * (1 - AZIMUTHAL_EQUAL_AREA_MIN_Z));
 const AZIMUTHAL_EQUAL_AREA_MAX_RAW_EDGE = 0.32;
+const STEREOGRAPHIC_CLIP_ANGLE = 142 * DEG;
+const STEREOGRAPHIC_MIN_Z = Math.cos(STEREOGRAPHIC_CLIP_ANGLE);
+const STEREOGRAPHIC_MAX_R = 2 * Math.tan(STEREOGRAPHIC_CLIP_ANGLE / 2);
+const STEREOGRAPHIC_MAX_RAW_EDGE = 1.0;
 
 const EQ_A1 = 1.340264;
 const EQ_A2 = -0.081106;
@@ -358,7 +362,7 @@ function rawForward(id, lambda, phi, z) {
             return [k * Math.cos(phi) * Math.sin(lambda), k * Math.sin(phi)];
         }
         case 'stereographic': {
-            if (z <= -1 + EPS) return null;
+            if (z <= STEREOGRAPHIC_MIN_Z) return null;
             const k = 2 / Math.max(EPS, 1 + z);
             return [k * Math.cos(phi) * Math.sin(lambda), k * Math.sin(phi)];
         }
@@ -389,6 +393,7 @@ function rawInvert(id, x, y) {
             return [x, y];
         case 'stereographic': {
             const rho = Math.hypot(x, y);
+            if (rho > STEREOGRAPHIC_MAX_R + EPS) return null;
             if (rho < EPS) return [0, 0];
             const c = 2 * Math.atan(rho / 2);
             const sinc = Math.sin(c);
@@ -575,7 +580,7 @@ function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out,
             return true;
         }
         case 'stereographic': {
-            if (localZ <= -1 + EPS) return false;
+            if (localZ <= STEREOGRAPHIC_MIN_Z) return false;
             const k = 2 / Math.max(EPS, 1 + localZ);
             out[off] = k * localX * scale;
             out[off + 1] = k * localY * scale;
@@ -603,8 +608,19 @@ function projectedEdgeExceeds(out, a, b, maxEdge2) {
     return dx * dx + dy * dy > maxEdge2;
 }
 
-function azimuthalEqualAreaMaxEdge2(projector) {
-    const maxEdge = AZIMUTHAL_EQUAL_AREA_MAX_RAW_EDGE * projector.scale;
+function projectionMaxEdge2(projector) {
+    let maxRawEdge = 0;
+    switch (projector.id) {
+        case 'azimuthalEqualArea':
+            maxRawEdge = AZIMUTHAL_EQUAL_AREA_MAX_RAW_EDGE;
+            break;
+        case 'stereographic':
+            maxRawEdge = STEREOGRAPHIC_MAX_RAW_EDGE;
+            break;
+        default:
+            return 0;
+    }
+    const maxEdge = maxRawEdge * projector.scale;
     return maxEdge * maxEdge;
 }
 
@@ -622,8 +638,8 @@ function writeProjectedTriangleBatch(projector, scratch, out, off, zOut, wrapMod
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
     if (!projectRotatedInto(projector, l2, scratch[14], scratch[10], scratch[11], scratch[12], out, off + 6, zOut)) return 0;
-    if (projector.id === 'azimuthalEqualArea') {
-        const maxEdge2 = azimuthalEqualAreaMaxEdge2(projector);
+    const maxEdge2 = projectionMaxEdge2(projector);
+    if (maxEdge2 > 0) {
         if (
             projectedEdgeExceeds(out, off, off + 3, maxEdge2) ||
             projectedEdgeExceeds(out, off + 3, off + 6, maxEdge2) ||
@@ -661,8 +677,8 @@ function writeProjectedSegmentBatch(projector, scratch, out, off, zOut, wrapMode
     }
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
-    if (projector.id === 'azimuthalEqualArea' &&
-        projectedEdgeExceeds(out, off, off + 3, azimuthalEqualAreaMaxEdge2(projector))) return 0;
+    const maxEdge2 = projectionMaxEdge2(projector);
+    if (maxEdge2 > 0 && projectedEdgeExceeds(out, off, off + 3, maxEdge2)) return 0;
     return 1;
 }
 
