@@ -16,6 +16,8 @@ export const state = {
     _koppenHoverBackup: null,
     _mapKoppenHoverBackup: null,
     mapMesh: null,
+    mapProjectionSnapshotMesh: null,
+    _mapProjectionSnapshotTarget: null,
     mapFaceToSide: null,
     _mapHoverBackup: null,
     mapGridMesh: null,

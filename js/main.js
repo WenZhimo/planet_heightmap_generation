@@ -841,6 +841,7 @@ const DEG_TO_RAD = Math.PI / 180;
 let mapProjectionRefreshTimer = 0;
 let mapProjectionRefreshToken = 0;
 let mapProjectionPreviewFrame = 0;
+let mapProjectionDragging = false;
 let mapZoomSyncing = false;
 
 function rebuildProjectedFlowOverlays() {
@@ -852,9 +853,10 @@ function rebuildProjectedFlowOverlays() {
     if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
 }
 
-function rebuildMapProjectionView({ forceRebuild = false, overlays = true, previewOnly = false } = {}) {
+function rebuildMapProjectionView({ forceRebuild = false, overlays = true, previewOnly = false, lines = true } = {}) {
     if (!state.mapMode || !state.curData) return;
-    if (forceRebuild || !updateMapProjectionMeshes(undefined, { previewOnly })) buildMapMesh();
+    const updated = !forceRebuild && updateMapProjectionMeshes(undefined, { previewOnly, lines });
+    if (forceRebuild || (!updated && !previewOnly)) buildMapMesh();
     if (overlays) rebuildProjectedFlowOverlays();
     updateViewHint();
 }
@@ -897,7 +899,11 @@ function scheduleMapProjectionPreview() {
     if (mapProjectionPreviewFrame) return;
     mapProjectionPreviewFrame = requestAnimationFrame(() => {
         mapProjectionPreviewFrame = 0;
-        rebuildMapProjectionView({ overlays: false, previewOnly: false });
+        rebuildMapProjectionView({
+            overlays: false,
+            previewOnly: mapProjectionDragging,
+            lines: !mapProjectionDragging,
+        });
     });
 }
 
@@ -1083,6 +1089,7 @@ function initMapCenterDrag() {
         if (!drag) return;
         const id = drag.id;
         drag = null;
+        mapProjectionDragging = false;
         setMapProjectionPreviewActive(false);
         canvas.classList.remove('map-center-dragging');
         try { canvas.releasePointerCapture(id); } catch (_) {}
@@ -1106,6 +1113,8 @@ function initMapCenterDrag() {
             startParams: { ...params },
             moved: false,
         };
+        mapProjectionDragging = true;
+        setMapProjectionPreviewActive(true, params, { snapshot: true });
         e.preventDefault();
         e.stopImmediatePropagation();
         canvas.classList.add('map-center-dragging');
@@ -1138,6 +1147,7 @@ function initMapCenterDrag() {
         if (!drag || e.pointerId !== drag.id) return;
         const moved = drag.moved;
         drag = null;
+        mapProjectionDragging = false;
         canvas.classList.remove('map-center-dragging');
         try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
         if (mapProjectionRefreshTimer) {

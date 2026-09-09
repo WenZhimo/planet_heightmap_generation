@@ -1,7 +1,7 @@
 // Planet mesh construction: Voronoi geometry, map projection, overlays.
 
 import * as THREE from 'three';
-import { renderer, scene, waterMesh, atmosMesh, starsMesh } from './scene.js';
+import { renderer, scene, mapCamera, waterMesh, atmosMesh, starsMesh } from './scene.js';
 import { state } from './state.js';
 import { elevationToColor, elevToHeightKm, biomeColor } from './color-map.js';
 import { makeRng } from './rng.js';
@@ -15,7 +15,8 @@ const MAP_CLIP_PLANES = [
     new THREE.Plane(new THREE.Vector3(1, 0, 0), 2),   // x >= -2
     new THREE.Plane(new THREE.Vector3(-1, 0, 0), 2),   // x <= 2
 ];
-const MAP_PROJECTION_PREVIEW_MAX_SIDES = 24000;
+const MAP_PROJECTION_PREVIEW_MAX_SIDES = 10000;
+const MAP_PROJECTION_SNAPSHOT_MAX_SIZE = 1600;
 let mapProjectionPreviewActive = false;
 
 // Precompute smoothed biome colors: each region blends with its neighbors' average.
@@ -338,14 +339,124 @@ function clearMapProjectionPreview() {
     state._mapPreviewFaceToSideBuffer = null;
 }
 
+function clearMapProjectionSnapshot({ disposeTarget = false } = {}) {
+    if (state.mapProjectionSnapshotMesh) {
+        scene.remove(state.mapProjectionSnapshotMesh);
+        state.mapProjectionSnapshotMesh.geometry.dispose();
+        state.mapProjectionSnapshotMesh.material.dispose();
+        state.mapProjectionSnapshotMesh = null;
+    }
+    if (disposeTarget && state._mapProjectionSnapshotTarget) {
+        state._mapProjectionSnapshotTarget.dispose();
+        state._mapProjectionSnapshotTarget = null;
+    }
+}
+
 function hasProjectedTriangles(mesh) {
     return !!(mesh && mesh.geometry && mesh.geometry.drawRange && mesh.geometry.drawRange.count > 0);
 }
 
 function syncMapProjectionPreviewVisibility() {
     const showPreview = mapProjectionPreviewActive && state.mapMode && hasProjectedTriangles(state.mapProjectionPreviewMesh);
+    const showSnapshot = showPreview && !!(state.mapProjectionSnapshotMesh && state.mapProjectionSnapshotMesh.userData.active);
+    if (state.mapProjectionSnapshotMesh) state.mapProjectionSnapshotMesh.visible = showSnapshot;
     if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = showPreview;
-    if (state.mapMesh) state.mapMesh.visible = state.mapMode && !showPreview;
+    if (state.mapMesh) state.mapMesh.visible = state.mapMode && !showSnapshot;
+    if (state.mapGridMesh) state.mapGridMesh.visible = state.mapMode && state.gridEnabled && !showSnapshot;
+    if (state.mapSuperPlateBorderMesh) state.mapSuperPlateBorderMesh.visible = state.mapMode && !showSnapshot;
+    if (state.windArrowGroup) state.windArrowGroup.visible = !showSnapshot;
+    if (state.oceanCurrentArrowGroup) state.oceanCurrentArrowGroup.visible = !showSnapshot;
+}
+
+function ensureMapProjectionSnapshotTarget() {
+    const size = new THREE.Vector2();
+    renderer.getDrawingBufferSize(size);
+    if (!size.x || !size.y) return null;
+    const scale = Math.min(1, MAP_PROJECTION_SNAPSHOT_MAX_SIZE / Math.max(size.x, size.y));
+    const width = Math.max(1, Math.round(size.x * scale));
+    const height = Math.max(1, Math.round(size.y * scale));
+    let target = state._mapProjectionSnapshotTarget;
+    if (!target) {
+        target = new THREE.WebGLRenderTarget(width, height, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBAFormat,
+            depthBuffer: false,
+            stencilBuffer: false,
+        });
+        state._mapProjectionSnapshotTarget = target;
+    } else if (target.width !== width || target.height !== height) {
+        target.setSize(width, height);
+    }
+    return target;
+}
+
+function ensureMapProjectionSnapshotMesh(target) {
+    if (state.mapProjectionSnapshotMesh) return state.mapProjectionSnapshotMesh;
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const mat = new THREE.MeshBasicMaterial({
+        map: target.texture,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+    });
+    state.mapProjectionSnapshotMesh = new THREE.Mesh(geo, mat);
+    state.mapProjectionSnapshotMesh.renderOrder = 1;
+    state.mapProjectionSnapshotMesh.visible = false;
+    state.mapProjectionSnapshotMesh.userData.active = false;
+    scene.add(state.mapProjectionSnapshotMesh);
+    return state.mapProjectionSnapshotMesh;
+}
+
+function updateMapProjectionSnapshotPlane(snapshotMesh) {
+    const width = (mapCamera.right - mapCamera.left) / mapCamera.zoom;
+    const height = (mapCamera.top - mapCamera.bottom) / mapCamera.zoom;
+    snapshotMesh.position.set(mapCamera.position.x, mapCamera.position.y, -0.01);
+    snapshotMesh.scale.set(width, height, 1);
+}
+
+function captureMapProjectionSnapshot() {
+    if (!state.mapMode || !state.mapMesh) return false;
+    const target = ensureMapProjectionSnapshotTarget();
+    if (!target) return false;
+    const snapshotMesh = ensureMapProjectionSnapshotMesh(target);
+    const savedVisibility = {
+        snapshot: snapshotMesh.visible,
+        preview: state.mapProjectionPreviewMesh ? state.mapProjectionPreviewMesh.visible : false,
+        map: state.mapMesh.visible,
+        grid: state.mapGridMesh ? state.mapGridMesh.visible : false,
+        borders: state.mapSuperPlateBorderMesh ? state.mapSuperPlateBorderMesh.visible : false,
+        wind: state.windArrowGroup ? state.windArrowGroup.visible : false,
+        ocean: state.oceanCurrentArrowGroup ? state.oceanCurrentArrowGroup.visible : false,
+    };
+    const previousTarget = renderer.getRenderTarget();
+
+    snapshotMesh.visible = false;
+    if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = false;
+    state.mapMesh.visible = true;
+    if (state.mapGridMesh) state.mapGridMesh.visible = state.mapMode && state.gridEnabled;
+    if (state.mapSuperPlateBorderMesh) state.mapSuperPlateBorderMesh.visible = state.mapMode;
+    if (state.windArrowGroup) state.windArrowGroup.visible = true;
+    if (state.oceanCurrentArrowGroup) state.oceanCurrentArrowGroup.visible = true;
+
+    try {
+        renderer.setRenderTarget(target);
+        renderer.clear();
+        renderer.render(scene, mapCamera);
+    } finally {
+        renderer.setRenderTarget(previousTarget);
+        if (state.mapProjectionPreviewMesh) state.mapProjectionPreviewMesh.visible = savedVisibility.preview;
+        state.mapMesh.visible = savedVisibility.map;
+        if (state.mapGridMesh) state.mapGridMesh.visible = savedVisibility.grid;
+        if (state.mapSuperPlateBorderMesh) state.mapSuperPlateBorderMesh.visible = savedVisibility.borders;
+        if (state.windArrowGroup) state.windArrowGroup.visible = savedVisibility.wind;
+        if (state.oceanCurrentArrowGroup) state.oceanCurrentArrowGroup.visible = savedVisibility.ocean;
+        snapshotMesh.visible = savedVisibility.snapshot;
+    }
+
+    updateMapProjectionSnapshotPlane(snapshotMesh);
+    snapshotMesh.userData.active = true;
+    return true;
 }
 
 function updateProjectedTriangleMesh(targetMesh, sourceXyz, sourceColors, sourceCount, faceToSideBuffer, params, commitFaceMap) {
@@ -417,8 +528,17 @@ function buildMapProjectionPreviewMesh(params = getMapProjectionParams()) {
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(previewCount * 2 * 9), 3));
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(previewCount * 2 * 9), 3));
     setStableMapBounds(geo);
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, clippingPlanes: MAP_CLIP_PLANES });
+    const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        side: THREE.DoubleSide,
+        clippingPlanes: MAP_CLIP_PLANES,
+        transparent: true,
+        opacity: 0.92,
+        depthTest: false,
+        depthWrite: false,
+    });
     state.mapProjectionPreviewMesh = new THREE.Mesh(geo, mat);
+    state.mapProjectionPreviewMesh.renderOrder = 10;
     state.mapProjectionPreviewMesh.visible = false;
     state._mapPreviewTriangleXyz = sourceXyz;
     state._mapPreviewTriangleColors = sourceColors;
@@ -444,14 +564,16 @@ function updateMapProjectionPreviewMesh(params = getMapProjectionParams()) {
     return ok;
 }
 
-export function setMapProjectionPreviewActive(active, params = getMapProjectionParams()) {
+export function setMapProjectionPreviewActive(active, params = getMapProjectionParams(), { snapshot = false } = {}) {
     mapProjectionPreviewActive = !!active;
     if (active) {
+        if (snapshot) captureMapProjectionSnapshot();
         const ok = updateMapProjectionPreviewMesh(params);
         if (!ok) mapProjectionPreviewActive = false;
         syncMapProjectionPreviewVisibility();
         return ok && hasProjectedTriangles(state.mapProjectionPreviewMesh);
     }
+    if (state.mapProjectionSnapshotMesh) state.mapProjectionSnapshotMesh.userData.active = false;
     syncMapProjectionPreviewVisibility();
     return true;
 }
@@ -498,10 +620,12 @@ function updateProjectedLonLatLineMesh(lineMesh, sourceSegments, sourceCount, z,
     return true;
 }
 
-export function updateMapProjectionMeshes(params = getMapProjectionParams(), { previewOnly = false } = {}) {
+export function updateMapProjectionMeshes(params = getMapProjectionParams(), { previewOnly = false, lines = true } = {}) {
     const meshUpdated = previewOnly ? updateMapProjectionPreviewMesh(params) : updateMapMeshProjection(params);
-    updateProjectedLonLatLineMesh(state.mapGridMesh, state._mapGridSourceSegments, state._mapGridSourceCount, 0.001, params);
-    updateProjectedXyzLineMesh(state.mapSuperPlateBorderMesh, state._mapBorderSourceSegments, state._mapBorderSourceCount, 0.002, params);
+    if (lines) {
+        updateProjectedLonLatLineMesh(state.mapGridMesh, state._mapGridSourceSegments, state._mapGridSourceCount, 0.001, params);
+        updateProjectedXyzLineMesh(state.mapSuperPlateBorderMesh, state._mapBorderSourceSegments, state._mapBorderSourceCount, 0.002, params);
+    }
     return meshUpdated;
 }
 
@@ -509,6 +633,7 @@ export function updateMapProjectionMeshes(params = getMapProjectionParams(), { p
 export function buildMapMesh() {
     if (state.mapMesh) { scene.remove(state.mapMesh); state.mapMesh.geometry.dispose(); state.mapMesh.material.dispose(); state.mapMesh = null; }
     clearMapProjectionCache();
+    clearMapProjectionSnapshot({ disposeTarget: true });
     if (!state.curData || !state.mapMode) return;
 
     const { mesh, r_xyz, t_xyz, r_plate, r_elevation, t_elevation, mountain_r, coastline_r, ocean_r, r_stress, debugLayers } = state.curData;
@@ -647,6 +772,7 @@ export function buildMapMesh() {
     state._mapFaceToSideBuffer = faceToSide;
     updateMapMeshProjection(projectionParams);
     scene.add(state.mapMesh);
+    buildMapProjectionPreviewMesh(projectionParams);
 
     updateSuperPlateBorders();
     buildMapGrid();
