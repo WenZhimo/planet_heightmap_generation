@@ -31,7 +31,7 @@ World Orogen 是面向星球的概念美术工具。它服务于项目早期的�
 - **地形后处理**：基于噪声的域扭曲（FBM simplex 噪声 + 贪婪网格步行）让高程场形成有机海岸线和山脊；可独立控制的双边平滑用于柔化粗糙 BFS 距离场边界；冰川侵蚀会在高纬和高海拔处雕刻峡湾、U 形谷与湖盆；优先洪泛洼地处理通过山口刻蚀峡谷，确保每个陆地单元都能排水入海；迭代隐式 stream power 水力侵蚀会刻出自强化河谷，并在平坦接收区自动沉积；热力侵蚀通过崖锥角物质搬运柔化山脊；山脊锐化强化山线；常开土壤蠕变通过拉普拉斯扩散圆润坡面
 - **海岸粗糙化**：使用分形噪声、主动/被动大陆边缘差异、海湾/岬角域扭曲和近海岛屿散布
 - **3D 球体渲染**，包含大气边缘 shader、半透明水球、地形位移与星空
-- **多投影平面地图视图**，支持等距柱状、墨卡托、自然地球、Equal Earth 等面积、正射半球、方位等面积、球极平射与心射投影；可拖拽旋转投影中心/倾角、把中心纬度推到 ±90°、滚轮缩放并一键重置视角。拖拽时会切换为轻量海岸线 + 经纬网预览，松手后再恢复完整专题图层。
+- **多投影平面地图视图**，支持 d3-geo 的圆柱、方位、圆锥投影，以及 d3-geo-projection 扩展库中可直接实例化的世界、间断、多面体、方形、特殊与区域投影；可拖拽旋转投影中心/倾角、把中心纬度推到 ±90°、滚轮缩放并一键重置视角。拖拽时会切换为轻量海岸线 + 经纬网预览，松手后再恢复完整专题图层。
 - **交互式编辑**：Ctrl 点击板块，将其标记为待重塑；支持多选和视觉染色，然后点击重建一次性应用。再次 Ctrl 点击可取消待选板块，按 Escape 可取消全部待处理编辑
 - **季节性风场模拟**：压力驱动风场，ITCZ 随经度变化并追踪热赤道（海洋约 5°，大陆最高约 15-20°），包含高斯气压带（副热带高压、副极地低压、极地高压）、陆海热力差异形成的季风式气压反转、高程气压效应，以及受科里奥利力偏转的地转风和自然跨赤道流反转。夏季和冬季都会计算。
 - **海洋表层洋流**：基于规则的地理环流模拟，由风带（信风、西风、极地东风）和随经度变化的 ITCZ 赤道逆流驱动。大陆架通过海岸法线 BFS 分类为西边界或东边界，从而形成副热带环流（北半球顺时针、南半球逆时针）、西边界强化（类似湾流、黑潮）和较弱的东边界回流。可检测无阻挡向东流动的环极通道（类似南极绕极流）。洋流按热输送着色：红色为暖的向极流，蓝色为冷的向赤道流，黑色为纬向中性流。夏季和冬季都会计算。
@@ -130,13 +130,25 @@ npx serve .
   - **气候**：显示全部 30 种柯本-盖格气候类型的颜色色块
   - **高度图**：固定绝对范围的黑到白渐变（-5 km 洋底到 6 km 山峰），同一物理高度始终映射到同一灰度
 - **视图** 下拉框：在球体、自由相机和平面地图之间切换。自由相机模式支持 WASD 前进/后退/平移、Q/E 上下移动，并用鼠标右键拖拽转动相机视角。
-- **地图投影** 下拉框（仅平面地图模式）：切换等距柱状、墨卡托、自然地球、Equal Earth 等面积、正射半球、方位等面积、球极平射与心射投影。
+- **地图投影** 下拉框（仅平面地图模式）：切换 d3-geo 核心投影（等距圆柱、墨卡托、横轴墨卡托、Lambert 等面积方位、等距方位、心射、正射、立体、Albers、Lambert 正形圆锥、等面积圆锥、等距圆锥、自然地球、Equal Earth）以及 d3-geo-projection 扩展库投影。
 - **中心经度 / 中心纬度 / 地图倾角 γ / 地图缩放** 控件（仅平面地图模式）：改变投影观察中心、倾角和预览缩放，中心纬度可调到 ±90°。也可在平面地图上用鼠标左键拖拽旋转投影；拖到当前投影范围外时会像 D3 示例一样转为调整 γ。拖拽期间只绘制海岸线轮廓和经纬网，用轻量预览保持响应，松手后再重建完整网格和当前图层。**重置地图视角** 会保持当前地图投影不变，只恢复中心经纬度 0°/0°、γ 0° 和 1.00× 缩放。导出不受影响，仍输出标准等距柱状 PNG。
 - **线框**：显示 Voronoi 单元边缘的线框叠层
 - **显示板块**：按板块为区域着色（绿色系 = 陆地，蓝色系 = 海洋），并绘制黑色超级板块边界线
 - **自动旋转**：让球体持续旋转
 - **经纬网**：在球体和地图视图上显示经纬网叠层
 - **网格间距**：选择经纬线间隔：30°、15°、10°、5° 或 2.5°
+
+### 扩展投影清单
+
+已查询 `d3-geo-projection@4.0.0` 源码导出，并接入其中 97 个可直接创建、带官方预设，或已提供默认控制点的投影工厂。`Raw`、`geoInterrupt`、`geoPolyhedral`、`geoProject`、`geoQuantize`、`geoQuincuncial`、`geoStitch` 属于底层 raw/helper/generator，不作为独立菜单项暴露；`geoModifiedStereographic` 需要外部系数，使用扩展库提供的 Alaska、GS48、GS50、Lee、Miller 预设。
+
+- `geoAiry`, `geoAitoff`, `geoArmadillo`, `geoAugust`, `geoBaker`, `geoBerghaus`, `geoBertin1953`, `geoBoggs`, `geoBonne`, `geoBottomley`, `geoBromley`, `geoChamberlin`, `geoChamberlinAfrica`, `geoCollignon`, `geoCraig`, `geoCraster`
+- `geoCylindricalEqualArea`, `geoCylindricalStereographic`, `geoEckert1`, `geoEckert2`, `geoEckert3`, `geoEckert4`, `geoEckert5`, `geoEckert6`, `geoEisenlohr`, `geoFahey`, `geoFoucaut`, `geoFoucautSinusoidal`, `geoGilbert`, `geoGingery`, `geoGinzburg4`, `geoGinzburg5`
+- `geoGinzburg6`, `geoGinzburg8`, `geoGinzburg9`, `geoGringorten`, `geoGringortenQuincuncial`, `geoGuyou`, `geoHammer`, `geoHammerRetroazimuthal`, `geoHealpix`, `geoHill`, `geoHomolosine`, `geoHufnagel`, `geoHyperelliptical`, `geoInterruptedBoggs`, `geoInterruptedHomolosine`, `geoInterruptedMollweide`
+- `geoInterruptedMollweideHemispheres`, `geoInterruptedQuarticAuthalic`, `geoInterruptedSinuMollweide`, `geoInterruptedSinusoidal`, `geoKavrayskiy7`, `geoLagrange`, `geoLarrivee`, `geoLaskowski`, `geoLittrow`, `geoLoximuthal`, `geoMiller`, `geoModifiedStereographicAlaska`, `geoModifiedStereographicGs48`, `geoModifiedStereographicGs50`, `geoModifiedStereographicLee`, `geoModifiedStereographicMiller`
+- `geoMollweide`, `geoMtFlatPolarParabolic`, `geoMtFlatPolarQuartic`, `geoMtFlatPolarSinusoidal`, `geoNaturalEarth2`, `geoNellHammer`, `geoNicolosi`, `geoPatterson`, `geoPeirceQuincuncial`, `geoPolyconic`, `geoPolyhedralButterfly`, `geoPolyhedralCollignon`, `geoPolyhedralWaterman`, `geoRectangularPolyconic`, `geoRobinson`, `geoSatellite`
+- `geoSinuMollweide`, `geoSinusoidal`, `geoTimes`, `geoTwoPointAzimuthal`, `geoTwoPointAzimuthalUsa`, `geoTwoPointEquidistant`, `geoTwoPointEquidistantUsa`, `geoVanDerGrinten`, `geoVanDerGrinten2`, `geoVanDerGrinten3`, `geoVanDerGrinten4`, `geoWagner`, `geoWagner4`, `geoWagner6`, `geoWagner7`, `geoWiechel`
+- `geoWinkel3`
 
 ### 检查下拉框
 
@@ -299,6 +311,8 @@ tuning/
 
 - [Three.js](https://threejs.org/) v0.160.0 — 3D 渲染
 - [Delaunator](https://github.com/mapbox/delaunator) v5.0.1 — 2D Delaunay 三角剖分
+- [d3-geo](https://github.com/d3/d3-geo) v3.1.1 — 地图投影 API 与核心投影
+- [d3-geo-projection](https://github.com/d3/d3-geo-projection) v4.0.0 — 扩展地图投影库
 
 ## 许可证
 

@@ -1,4 +1,5 @@
 import * as d3Geo from 'd3-geo';
+import * as d3GeoProjection from 'd3-geo-projection';
 import { state } from './state.js';
 
 const PI = Math.PI;
@@ -27,6 +28,11 @@ const GROUP_CYLINDRICAL = '圆柱投影 / Cylindrical';
 const GROUP_AZIMUTHAL = '方位投影 / Azimuthal';
 const GROUP_CONIC = '圆锥投影 / Conic';
 const GROUP_COMMON = '常用世界地图';
+const GROUP_EXTENDED_WORLD = '扩展库：世界投影 / d3-geo-projection';
+const GROUP_EXTENDED_CYLINDRICAL = '扩展库：圆柱与伪圆柱';
+const GROUP_EXTENDED_INTERRUPTED = '扩展库：间断投影';
+const GROUP_EXTENDED_POLYHEDRAL = '扩展库：多面体与方形投影';
+const GROUP_EXTENDED_SPECIAL = '扩展库：特殊与区域投影';
 
 const d3ProjectionMetricsCache = new Map();
 
@@ -47,9 +53,113 @@ const CORE_PROJECTION_DEFS = [
     { id: 'equalEarth', label: 'Equal Earth 等面积', group: GROUP_COMMON, custom: true, wrap: true },
 ];
 
-const PROJECTION_DEFS = new Map(CORE_PROJECTION_DEFS.map(def => [def.id, def]));
+const EXTENDED_PROJECTION_DEFS = [
+    { id: 'airy', label: 'Airy', group: GROUP_EXTENDED_SPECIAL, factory: 'geoAiry' },
+    { id: 'aitoff', label: 'Aitoff', group: GROUP_EXTENDED_WORLD, factory: 'geoAitoff', wrap: true },
+    { id: 'armadillo', label: 'Armadillo', group: GROUP_EXTENDED_SPECIAL, factory: 'geoArmadillo' },
+    { id: 'august', label: 'August Epicycloidal', group: GROUP_EXTENDED_WORLD, factory: 'geoAugust', wrap: true },
+    { id: 'baker', label: 'Baker Dinomic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoBaker', wrap: true },
+    { id: 'berghaus', label: 'Berghaus Star', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBerghaus' },
+    { id: 'bertin1953', label: 'Bertin 1953', group: GROUP_EXTENDED_WORLD, factory: 'geoBertin1953', wrap: true },
+    { id: 'boggs', label: 'Boggs Eumorphic', group: GROUP_EXTENDED_WORLD, factory: 'geoBoggs', wrap: true },
+    { id: 'bonne', label: 'Bonne', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBonne', wrap: true },
+    { id: 'bottomley', label: 'Bottomley', group: GROUP_EXTENDED_WORLD, factory: 'geoBottomley', wrap: true },
+    { id: 'bromley', label: 'Bromley', group: GROUP_EXTENDED_WORLD, factory: 'geoBromley', wrap: true },
+    { id: 'chamberlin', label: 'Chamberlin Trimetric', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlin', args: [[-120, 30], [0, -35], [120, 30]] },
+    { id: 'chamberlinAfrica', label: 'Chamberlin Africa', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlinAfrica' },
+    { id: 'collignon', label: 'Collignon', group: GROUP_EXTENDED_WORLD, factory: 'geoCollignon', wrap: true },
+    { id: 'craig', label: 'Craig Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoCraig' },
+    { id: 'craster', label: 'Craster Parabolic', group: GROUP_EXTENDED_WORLD, factory: 'geoCraster', wrap: true },
+    { id: 'cylindricalEqualArea', label: 'Cylindrical Equal-Area', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalEqualArea', wrap: true },
+    { id: 'cylindricalStereographic', label: 'Cylindrical Stereographic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalStereographic', wrap: true },
+    { id: 'eckert1', label: 'Eckert I', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert1', wrap: true },
+    { id: 'eckert2', label: 'Eckert II', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert2', wrap: true },
+    { id: 'eckert3', label: 'Eckert III', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert3', wrap: true },
+    { id: 'eckert4', label: 'Eckert IV', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert4', wrap: true },
+    { id: 'eckert5', label: 'Eckert V', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert5', wrap: true },
+    { id: 'eckert6', label: 'Eckert VI', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert6', wrap: true },
+    { id: 'eisenlohr', label: 'Eisenlohr', group: GROUP_EXTENDED_WORLD, factory: 'geoEisenlohr', wrap: true },
+    { id: 'fahey', label: 'Fahey', group: GROUP_EXTENDED_WORLD, factory: 'geoFahey', wrap: true },
+    { id: 'foucaut', label: 'Foucaut', group: GROUP_EXTENDED_WORLD, factory: 'geoFoucaut', wrap: true },
+    { id: 'foucautSinusoidal', label: 'Foucaut Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoFoucautSinusoidal', wrap: true },
+    { id: 'gilbert', label: 'Gilbert', group: GROUP_EXTENDED_SPECIAL, factory: 'geoGilbert' },
+    { id: 'gingery', label: 'Gingery', group: GROUP_EXTENDED_SPECIAL, factory: 'geoGingery' },
+    { id: 'ginzburg4', label: 'Ginzburg IV', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg4', wrap: true },
+    { id: 'ginzburg5', label: 'Ginzburg V', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg5', wrap: true },
+    { id: 'ginzburg6', label: 'Ginzburg VI', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg6', wrap: true },
+    { id: 'ginzburg8', label: 'Ginzburg VIII', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg8', wrap: true },
+    { id: 'ginzburg9', label: 'Ginzburg IX', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg9', wrap: true },
+    { id: 'gringorten', label: 'Gringorten', group: GROUP_EXTENDED_WORLD, factory: 'geoGringorten', wrap: true },
+    { id: 'gringortenQuincuncial', label: 'Gringorten Quincuncial', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoGringortenQuincuncial' },
+    { id: 'guyou', label: 'Guyou', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoGuyou' },
+    { id: 'hammer', label: 'Hammer', group: GROUP_EXTENDED_WORLD, factory: 'geoHammer', wrap: true },
+    { id: 'hammerRetroazimuthal', label: 'Hammer Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoHammerRetroazimuthal' },
+    { id: 'healpix', label: 'HEALPix', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoHealpix' },
+    { id: 'hill', label: 'Hill Eucyclic', group: GROUP_EXTENDED_WORLD, factory: 'geoHill', wrap: true },
+    { id: 'homolosine', label: 'Homolosine', group: GROUP_EXTENDED_WORLD, factory: 'geoHomolosine', wrap: true },
+    { id: 'hufnagel', label: 'Hufnagel', group: GROUP_EXTENDED_WORLD, factory: 'geoHufnagel', wrap: true },
+    { id: 'hyperelliptical', label: 'Hyperelliptical', group: GROUP_EXTENDED_WORLD, factory: 'geoHyperelliptical', wrap: true },
+    { id: 'interruptedBoggs', label: 'Interrupted Boggs', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedBoggs' },
+    { id: 'interruptedHomolosine', label: 'Interrupted Homolosine', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedHomolosine' },
+    { id: 'interruptedMollweide', label: 'Interrupted Mollweide', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedMollweide' },
+    { id: 'interruptedMollweideHemispheres', label: 'Interrupted Mollweide Hemispheres', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedMollweideHemispheres' },
+    { id: 'interruptedQuarticAuthalic', label: 'Interrupted Quartic Authalic', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedQuarticAuthalic' },
+    { id: 'interruptedSinuMollweide', label: 'Interrupted Sinu-Mollweide', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedSinuMollweide' },
+    { id: 'interruptedSinusoidal', label: 'Interrupted Sinusoidal', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedSinusoidal' },
+    { id: 'kavrayskiy7', label: 'Kavrayskiy VII', group: GROUP_EXTENDED_WORLD, factory: 'geoKavrayskiy7', wrap: true },
+    { id: 'lagrange', label: 'Lagrange', group: GROUP_EXTENDED_WORLD, factory: 'geoLagrange', wrap: true },
+    { id: 'larrivee', label: "Larrivée", group: GROUP_EXTENDED_WORLD, factory: 'geoLarrivee', wrap: true },
+    { id: 'laskowski', label: 'Laskowski', group: GROUP_EXTENDED_WORLD, factory: 'geoLaskowski', wrap: true },
+    { id: 'littrow', label: 'Littrow', group: GROUP_EXTENDED_SPECIAL, factory: 'geoLittrow' },
+    { id: 'loximuthal', label: 'Loximuthal', group: GROUP_EXTENDED_WORLD, factory: 'geoLoximuthal', wrap: true },
+    { id: 'miller', label: 'Miller Cylindrical', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoMiller', wrap: true },
+    { id: 'modifiedStereographicAlaska', label: 'Modified Stereographic Alaska', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicAlaska' },
+    { id: 'modifiedStereographicGs48', label: 'Modified Stereographic GS48', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs48' },
+    { id: 'modifiedStereographicGs50', label: 'Modified Stereographic GS50', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs50' },
+    { id: 'modifiedStereographicLee', label: 'Modified Stereographic Lee', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicLee' },
+    { id: 'modifiedStereographicMiller', label: 'Modified Stereographic Miller', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicMiller' },
+    { id: 'mollweide', label: 'Mollweide', group: GROUP_EXTENDED_WORLD, factory: 'geoMollweide', wrap: true },
+    { id: 'mtFlatPolarParabolic', label: 'McBryde-Thomas Flat-Polar Parabolic', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarParabolic', wrap: true },
+    { id: 'mtFlatPolarQuartic', label: 'McBryde-Thomas Flat-Polar Quartic', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarQuartic', wrap: true },
+    { id: 'mtFlatPolarSinusoidal', label: 'McBryde-Thomas Flat-Polar Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarSinusoidal', wrap: true },
+    { id: 'naturalEarth2', label: 'Natural Earth II', group: GROUP_EXTENDED_WORLD, factory: 'geoNaturalEarth2', wrap: true },
+    { id: 'nellHammer', label: 'Nell-Hammer', group: GROUP_EXTENDED_WORLD, factory: 'geoNellHammer', wrap: true },
+    { id: 'nicolosi', label: 'Nicolosi Globular', group: GROUP_EXTENDED_WORLD, factory: 'geoNicolosi', wrap: true },
+    { id: 'patterson', label: 'Patterson Cylindrical', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoPatterson', wrap: true },
+    { id: 'peirceQuincuncial', label: 'Peirce Quincuncial', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPeirceQuincuncial' },
+    { id: 'polyconic', label: 'Polyconic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoPolyconic', wrap: true },
+    { id: 'polyhedralButterfly', label: 'Polyhedral Butterfly', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralButterfly' },
+    { id: 'polyhedralCollignon', label: 'Polyhedral Collignon', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralCollignon' },
+    { id: 'polyhedralWaterman', label: 'Polyhedral Waterman', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralWaterman' },
+    { id: 'rectangularPolyconic', label: 'Rectangular Polyconic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoRectangularPolyconic', wrap: true },
+    { id: 'robinson', label: 'Robinson', group: GROUP_EXTENDED_WORLD, factory: 'geoRobinson', wrap: true },
+    { id: 'satellite', label: 'Satellite', group: GROUP_EXTENDED_SPECIAL, factory: 'geoSatellite' },
+    { id: 'sinuMollweide', label: 'Sinu-Mollweide', group: GROUP_EXTENDED_WORLD, factory: 'geoSinuMollweide', wrap: true },
+    { id: 'sinusoidal', label: 'Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoSinusoidal', wrap: true },
+    { id: 'times', label: 'Times', group: GROUP_EXTENDED_WORLD, factory: 'geoTimes', wrap: true },
+    { id: 'twoPointAzimuthal', label: 'Two-Point Azimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointAzimuthal', args: [[-60, 0], [60, 0]] },
+    { id: 'twoPointAzimuthalUsa', label: 'Two-Point Azimuthal USA', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointAzimuthalUsa' },
+    { id: 'twoPointEquidistant', label: 'Two-Point Equidistant', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointEquidistant', args: [[-60, 0], [60, 0]] },
+    { id: 'twoPointEquidistantUsa', label: 'Two-Point Equidistant USA', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointEquidistantUsa' },
+    { id: 'vanDerGrinten', label: 'Van der Grinten', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten', wrap: true },
+    { id: 'vanDerGrinten2', label: 'Van der Grinten II', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten2', wrap: true },
+    { id: 'vanDerGrinten3', label: 'Van der Grinten III', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten3', wrap: true },
+    { id: 'vanDerGrinten4', label: 'Van der Grinten IV', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten4', wrap: true },
+    { id: 'wagner', label: 'Wagner', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner', wrap: true },
+    { id: 'wagner4', label: 'Wagner IV', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner4', wrap: true },
+    { id: 'wagner6', label: 'Wagner VI', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner6', wrap: true },
+    { id: 'wagner7', label: 'Wagner VII', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner7', wrap: true },
+    { id: 'wiechel', label: 'Wiechel', group: GROUP_EXTENDED_SPECIAL, factory: 'geoWiechel' },
+    { id: 'winkel3', label: 'Winkel Tripel', group: GROUP_EXTENDED_WORLD, factory: 'geoWinkel3', wrap: true },
+].map(def => ({
+    ...def,
+    source: 'd3-geo-projection',
+    d3Factory: () => makeD3Projection(d3GeoProjection[def.factory](...(def.args || []))),
+}));
 
-export const MAP_PROJECTIONS = CORE_PROJECTION_DEFS.map(({ id, label, group }) => ({ id, label, group }));
+const PROJECTION_DEFS = new Map([...CORE_PROJECTION_DEFS, ...EXTENDED_PROJECTION_DEFS].map(def => [def.id, def]));
+
+export const MAP_PROJECTIONS = [...CORE_PROJECTION_DEFS, ...EXTENDED_PROJECTION_DEFS].map(({ id, label, group, source, factory }) => ({ id, label, group, source, factory }));
 const PROJECTION_IDS = new Set(PROJECTION_DEFS.keys());
 
 function clamp(v, lo, hi) {
