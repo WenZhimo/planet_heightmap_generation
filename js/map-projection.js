@@ -25,6 +25,7 @@ const MODIFIED_STEREOGRAPHIC_DEFAULT_COEFFICIENTS = [[0.9245, 0], [0, 0], [0.019
 const MODIFIED_STEREOGRAPHIC_DEFAULT_ROTATE = [-20, -18];
 const D3_BOUNDS_STEP = 10;
 const D3_BOUNDS_LIMIT = 1e5;
+const ARMADILLO_DEFAULT_PARALLEL = 20 * DEG;
 
 const GROUP_CYLINDRICAL = '圆柱投影 / Cylindrical';
 const GROUP_AZIMUTHAL = '方位投影 / Azimuthal';
@@ -42,13 +43,13 @@ const CORE_PROJECTION_DEFS = [
     { id: 'equirectangular', label: '等距圆柱 / Plate Carrée', group: GROUP_CYLINDRICAL, custom: true, wrap: true },
     { id: 'mercator', label: '墨卡托', group: GROUP_CYLINDRICAL, custom: true, wrap: true },
     { id: 'transverseMercator', label: '横轴墨卡托', group: GROUP_CYLINDRICAL, d3Factory: () => makeD3Projection(d3Geo.geoTransverseMercator()), wrap: true },
-    { id: 'azimuthalEqualArea', label: 'Lambert 等面积方位', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'azimuthalEqualArea', label: '兰伯特等面积方位投影', group: GROUP_AZIMUTHAL, custom: true },
     { id: 'azimuthalEquidistant', label: '等距方位', group: GROUP_AZIMUTHAL, d3Factory: () => makeD3Projection(d3Geo.geoAzimuthalEquidistant()), maxRawEdge: 0.65 },
     { id: 'gnomonic', label: '心射投影', group: GROUP_AZIMUTHAL, custom: true },
     { id: 'orthographic', label: '正射投影', group: GROUP_AZIMUTHAL, custom: true },
-    { id: 'stereographic', label: '立体投影 / 球极平射', group: GROUP_AZIMUTHAL, custom: true },
-    { id: 'albers', label: 'Albers 等面积圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoAlbers(), { parallels: [20, 50] }), wrap: true },
-    { id: 'conicConformal', label: 'Lambert 正形圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicConformal(), { parallels: [20, 50] }), wrap: true },
+    { id: 'stereographic', label: '球极平射投影 / 立体投影', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'albers', label: '阿尔伯斯等面积圆锥投影', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoAlbers(), { parallels: [20, 50] }), wrap: true },
+    { id: 'conicConformal', label: '兰伯特正形圆锥投影', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicConformal(), { parallels: [20, 50] }), wrap: true, clipLatRange: [-82, 90], maxRawEdge: 0.42 },
     { id: 'conicEqualArea', label: '等面积圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicEqualArea(), { parallels: [20, 50] }), wrap: true },
     { id: 'conicEquidistant', label: '等距圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicEquidistant(), { parallels: [20, 50] }), wrap: true },
     { id: 'naturalEarth1', label: '自然地球', group: GROUP_COMMON, custom: true, wrap: true },
@@ -58,7 +59,7 @@ const CORE_PROJECTION_DEFS = [
 const EXTENDED_PROJECTION_DEFS = [
     { id: 'airy', label: 'Airy', group: GROUP_EXTENDED_SPECIAL, factory: 'geoAiry' },
     { id: 'aitoff', label: 'Aitoff', group: GROUP_EXTENDED_WORLD, factory: 'geoAitoff', wrap: true },
-    { id: 'armadillo', label: 'Armadillo', group: GROUP_EXTENDED_SPECIAL, factory: 'geoArmadillo' },
+    { id: 'armadillo', label: 'Armadillo（犰狳）投影', group: GROUP_EXTENDED_SPECIAL, factory: 'geoArmadillo', preserveCenter: true, visibilityMode: 'armadillo', fitQuantile: [0.005, 0.995], maxRawEdge: 0.42 },
     { id: 'august', label: 'August Epicycloidal', group: GROUP_EXTENDED_WORLD, factory: 'geoAugust', wrap: true },
     { id: 'baker', label: 'Baker Dinomic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoBaker', wrap: true },
     { id: 'berghaus', label: 'Berghaus Star', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBerghaus' },
@@ -67,10 +68,10 @@ const EXTENDED_PROJECTION_DEFS = [
     { id: 'bonne', label: 'Bonne', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBonne', wrap: true },
     { id: 'bottomley', label: 'Bottomley', group: GROUP_EXTENDED_WORLD, factory: 'geoBottomley', wrap: true },
     { id: 'bromley', label: 'Bromley', group: GROUP_EXTENDED_WORLD, factory: 'geoBromley', wrap: true },
-    { id: 'chamberlin', label: 'Chamberlin Trimetric', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlin', args: [[-120, 30], [0, -35], [120, 30]] },
+    { id: 'chamberlin', label: '张伯伦三点投影 / Chamberlin Trimetric', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlin', args: [[0, 60], [-90, -25.65890627325528], [90, -25.65890627325528]], clipCircle: true, fitQuantile: [0.01, 0.99], maxRawEdge: 0.34 },
     { id: 'chamberlinAfrica', label: 'Chamberlin Africa', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlinAfrica' },
     { id: 'collignon', label: 'Collignon', group: GROUP_EXTENDED_WORLD, factory: 'geoCollignon', wrap: true },
-    { id: 'craig', label: 'Craig Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoCraig' },
+    { id: 'craig', label: '克雷格逆方位投影 / Craig Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoCraig', clipCircle: true, maxRawEdge: 0.42 },
     { id: 'craster', label: 'Craster Parabolic', group: GROUP_EXTENDED_WORLD, factory: 'geoCraster', wrap: true },
     { id: 'cylindricalEqualArea', label: 'Cylindrical Equal-Area', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalEqualArea', wrap: true },
     { id: 'cylindricalStereographic', label: 'Cylindrical Stereographic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalStereographic', wrap: true },
@@ -157,7 +158,7 @@ const EXTENDED_PROJECTION_DEFS = [
 ].map(def => ({
     ...def,
     source: 'd3-geo-projection',
-    d3Factory: () => makeD3Projection(d3GeoProjection[def.factory](...(def.args || []))),
+    d3Factory: () => makeD3Projection(d3GeoProjection[def.factory](...(def.args || [])), def),
 }));
 
 const PROJECTION_DEFS = new Map([...CORE_PROJECTION_DEFS, ...EXTENDED_PROJECTION_DEFS].map(def => [def.id, def]));
@@ -221,11 +222,11 @@ function projectionDef(id) {
     return PROJECTION_DEFS.get(id) || PROJECTION_DEFS.get('equirectangular');
 }
 
-function makeD3Projection(projection, { parallels } = {}) {
+function makeD3Projection(projection, { parallels, preserveCenter = false, preserveRotate = false, preserveAngle = false } = {}) {
     if (parallels && projection.parallels) projection.parallels(parallels);
-    if (projection.rotate) projection.rotate([0, 0, 0]);
-    if (projection.center) projection.center([0, 0]);
-    if (projection.angle) projection.angle(0);
+    if (!preserveRotate && projection.rotate) projection.rotate([0, 0, 0]);
+    if (!preserveCenter && projection.center) projection.center([0, 0]);
+    if (!preserveAngle && projection.angle) projection.angle(0);
     if (projection.scale) projection.scale(1);
     if (projection.translate) projection.translate([0, 0]);
     if (projection.precision) projection.precision(0.1);
@@ -246,17 +247,75 @@ function quantile(sorted, t) {
     return sorted[idx];
 }
 
+function sphericalDot(lambda, phi, centerLon, centerLat) {
+    return Math.sin(phi) * Math.sin(centerLat) +
+        Math.cos(phi) * Math.cos(centerLat) * Math.cos(lambda - centerLon);
+}
+
+function makeD3PointFilters(def, projection) {
+    const filters = {
+        d3ClipLatMin: Number.NEGATIVE_INFINITY,
+        d3ClipLatMax: Number.POSITIVE_INFINITY,
+        d3ClipCircleCos: null,
+        d3ClipCenterLon: 0,
+        d3ClipCenterLat: 0,
+        d3VisibilityMode: def?.visibilityMode || '',
+    };
+
+    if (Array.isArray(def?.clipLatRange)) {
+        filters.d3ClipLatMin = (Number.isFinite(def.clipLatRange[0]) ? def.clipLatRange[0] : -90) * DEG;
+        filters.d3ClipLatMax = (Number.isFinite(def.clipLatRange[1]) ? def.clipLatRange[1] : 90) * DEG;
+    }
+
+    if (def?.clipCircle) {
+        const clipAngle = Number.isFinite(def.clipAngle) ? def.clipAngle : Number(projection?.clipAngle?.());
+        if (Number.isFinite(clipAngle) && clipAngle > 0 && clipAngle < 180) {
+            filters.d3ClipCircleCos = Math.cos(clipAngle * DEG);
+            if (Array.isArray(def.clipCenter)) {
+                filters.d3ClipCenterLon = def.clipCenter[0] * DEG;
+                filters.d3ClipCenterLat = def.clipCenter[1] * DEG;
+            }
+        }
+    }
+
+    return filters;
+}
+
+function passesD3PointFilters(target, lambda, phi, localZ = null) {
+    if (!target) return true;
+    if (phi < target.d3ClipLatMin - EPS || phi > target.d3ClipLatMax + EPS) return false;
+
+    if (target.d3VisibilityMode === 'armadillo') {
+        const tanPhi0 = Math.tan(ARMADILLO_DEFAULT_PARALLEL);
+        if (!(phi > -Math.atan2(Math.cos(lambda / 2), tanPhi0) - 1e-3)) return false;
+    }
+
+    if (target.d3ClipCircleCos !== null && Number.isFinite(target.d3ClipCircleCos)) {
+        const dot = (Math.abs(target.d3ClipCenterLon) < EPS && Math.abs(target.d3ClipCenterLat) < EPS && Number.isFinite(localZ))
+            ? localZ
+            : sphericalDot(lambda, phi, target.d3ClipCenterLon, target.d3ClipCenterLat);
+        if (dot <= target.d3ClipCircleCos + EPS) return false;
+    }
+
+    return true;
+}
+
 function getD3ProjectionMetrics(def) {
     if (!def || !def.d3Factory) return null;
     const cached = d3ProjectionMetricsCache.get(def.id);
     if (cached) return cached;
 
     const projection = def.d3Factory();
+    const filters = makeD3PointFilters(def, projection);
     const xs = [];
     const ys = [];
+    const [fitLo, fitHi] = Array.isArray(def.fitQuantile) ? def.fitQuantile : [0.01, 0.99];
     for (let lat = -90; lat <= 90; lat += D3_BOUNDS_STEP) {
         const sampleLat = clamp(lat, -89.999, 89.999);
+        const phi = sampleLat * DEG;
         for (let lon = -180; lon <= 180; lon += D3_BOUNDS_STEP) {
+            const lambda = lon * DEG;
+            if (!passesD3PointFilters(filters, lambda, phi, Math.cos(phi) * Math.cos(lambda))) continue;
             const point = projection([lon, sampleLat]);
             if (!isFiniteD3Point(point)) continue;
             xs.push(point[0]);
@@ -270,10 +329,10 @@ function getD3ProjectionMetrics(def) {
     if (xs.length >= 4 && ys.length >= 4) {
         xs.sort((a, b) => a - b);
         ys.sort((a, b) => a - b);
-        const minX = quantile(xs, 0.01);
-        const maxX = quantile(xs, 0.99);
-        const minY = quantile(ys, 0.01);
-        const maxY = quantile(ys, 0.99);
+        const minX = quantile(xs, fitLo);
+        const maxX = quantile(xs, fitHi);
+        const minY = quantile(ys, fitLo);
+        const maxY = quantile(ys, fitHi);
         const spanX = Math.max(EPS, maxX - minX);
         const spanY = Math.max(EPS, maxY - minY);
         offsetX = (minX + maxX) / 2;
@@ -287,6 +346,7 @@ function getD3ProjectionMetrics(def) {
         offsetY,
         scale,
         maxRawEdge: def.maxRawEdge || 0.8,
+        ...filters,
     };
     d3ProjectionMetricsCache.set(def.id, metrics);
     return metrics;
@@ -338,6 +398,12 @@ export function getMapProjectionParams() {
         d3OffsetX: metrics?.offsetX || 0,
         d3OffsetY: metrics?.offsetY || 0,
         d3MaxRawEdge: metrics?.maxRawEdge || 0,
+        d3ClipLatMin: metrics?.d3ClipLatMin ?? Number.NEGATIVE_INFINITY,
+        d3ClipLatMax: metrics?.d3ClipLatMax ?? Number.POSITIVE_INFINITY,
+        d3ClipCircleCos: metrics?.d3ClipCircleCos ?? null,
+        d3ClipCenterLon: metrics?.d3ClipCenterLon || 0,
+        d3ClipCenterLat: metrics?.d3ClipCenterLat || 0,
+        d3VisibilityMode: metrics?.d3VisibilityMode || '',
     };
 }
 
@@ -584,6 +650,7 @@ function localToWorldVector(localX, localY, localZ, params) {
 
 function d3RawForward(params, lambda, phi) {
     if (!params.d3Projection) return null;
+    if (!passesD3PointFilters(params, lambda, phi, Math.cos(phi) * Math.cos(lambda))) return null;
     const point = params.d3Projection([lambda / DEG, phi / DEG]);
     if (!isFiniteD3Point(point)) return null;
     return [
@@ -774,6 +841,12 @@ export function createMapProjectionProjector(params = getMapProjectionParams()) 
         d3OffsetX: params.d3OffsetX || 0,
         d3OffsetY: params.d3OffsetY || 0,
         d3MaxRawEdge: params.d3MaxRawEdge || 0,
+        d3ClipLatMin: params.d3ClipLatMin ?? Number.NEGATIVE_INFINITY,
+        d3ClipLatMax: params.d3ClipLatMax ?? Number.POSITIVE_INFINITY,
+        d3ClipCircleCos: params.d3ClipCircleCos ?? null,
+        d3ClipCenterLon: params.d3ClipCenterLon || 0,
+        d3ClipCenterLat: params.d3ClipCenterLat || 0,
+        d3VisibilityMode: params.d3VisibilityMode || '',
         x0: orientation.x[0], x1: orientation.x[1], x2: orientation.x[2],
         y0: orientation.y[0], y1: orientation.y[1], y2: orientation.y[2],
         z0: orientation.z[0], z1: orientation.z[1], z2: orientation.z[2],
@@ -808,6 +881,7 @@ function rotateLonLatInto(projector, lon, lat, scratch, off) {
 function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out, off, zOut) {
     const scale = projector.scale;
     if (projector.d3Projection) {
+        if (!passesD3PointFilters(projector, lambda, phi, localZ)) return false;
         const point = projector.d3Projection([lambda / DEG, phi / DEG]);
         if (!isFiniteD3Point(point)) return false;
         out[off] = (point[0] - projector.d3OffsetX) * scale;
@@ -914,6 +988,13 @@ function writeProjectedTriangleBatch(projector, scratch, out, off, zOut, wrapMod
         if (l1 > 0) l1 -= TAU;
         if (l2 > 0) l2 -= TAU;
     }
+    if (projector.d3Projection) {
+        if (
+            !passesD3PointFilters(projector, l0, scratch[4], scratch[2]) ||
+            !passesD3PointFilters(projector, l1, scratch[9], scratch[7]) ||
+            !passesD3PointFilters(projector, l2, scratch[14], scratch[12])
+        ) return 0;
+    }
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
     if (!projectRotatedInto(projector, l2, scratch[14], scratch[10], scratch[11], scratch[12], out, off + 6, zOut)) return 0;
@@ -953,6 +1034,12 @@ function writeProjectedSegmentBatch(projector, scratch, out, off, zOut, wrapMode
     } else if (wrapMode === -1) {
         if (l0 > 0) l0 -= TAU;
         if (l1 > 0) l1 -= TAU;
+    }
+    if (projector.d3Projection) {
+        if (
+            !passesD3PointFilters(projector, l0, scratch[4], scratch[2]) ||
+            !passesD3PointFilters(projector, l1, scratch[9], scratch[7])
+        ) return 0;
     }
     if (!projectRotatedInto(projector, l0, scratch[4], scratch[0], scratch[1], scratch[2], out, off, zOut)) return 0;
     if (!projectRotatedInto(projector, l1, scratch[9], scratch[5], scratch[6], scratch[7], out, off + 3, zOut)) return 0;
