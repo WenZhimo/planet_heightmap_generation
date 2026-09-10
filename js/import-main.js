@@ -12,7 +12,7 @@ import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, upd
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
-import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams, mapPointToXyz,
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams, mapPointToXyz, populateMapProjectionSelect,
          rotateMapProjectionParamsByDrag } from './map-projection.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
@@ -544,6 +544,7 @@ document.getElementById('gridSpacing').addEventListener('change', (e) => {
 // Flat map projection controls
 const mapProjectionGroup = document.getElementById('mapProjectionGroup');
 const sMapProjection = document.getElementById('sMapProjection');
+populateMapProjectionSelect(sMapProjection);
 const mapCenterLonGroup = document.getElementById('mapCenterLonGroup');
 const sMapCenterLon = document.getElementById('sMapCenterLon');
 const vMapCenterLon = document.getElementById('vMapCenterLon');

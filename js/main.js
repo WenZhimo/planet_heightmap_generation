@@ -13,7 +13,7 @@ import { setupEditMode } from './edit-mode.js';
 import { detailFromSlider, sliderFromDetail } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
-import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams,
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams, populateMapProjectionSelect,
          rotateMapProjectionParamsByDrag } from './map-projection.js';
 
 // Slider value displays + stale tracking
@@ -820,6 +820,7 @@ document.getElementById('gridSpacing').addEventListener('change', (e) => {
 // Flat map projection controls
 const mapProjectionGroup = document.getElementById('mapProjectionGroup');
 const sMapProjection = document.getElementById('sMapProjection');
+populateMapProjectionSelect(sMapProjection);
 const mapCenterLonGroup = document.getElementById('mapCenterLonGroup');
 const sMapCenterLon = document.getElementById('sMapCenterLon');
 const vMapCenterLon = document.getElementById('vMapCenterLon');
