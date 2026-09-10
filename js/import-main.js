@@ -4,13 +4,16 @@
 import * as THREE from 'three';
 import { renderer, scene, camera, ctrl, waterMesh, atmosMesh, starsMesh,
          mapCamera, updateMapCameraFrustum, mapCtrl, canvas,
-         tickZoom, tickMapZoom } from './scene.js';
+         tickZoom, tickMapZoom, tickFreeCamera, setFreeCameraControls, recenterGlobeCamera,
+         resetMapCameraView, setMapCameraZoom } from './scene.js';
 import { state } from './state.js';
 import { importHeightmap, reapplyViaWorker, computeClimateViaWorker } from './generate.js';
-import { buildMesh, updateMeshColors, buildMapMesh, rebuildGrids, exportMap, exportMapBatch, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
+import { buildMesh, updateMeshColors, updateSuperPlateBorders, buildMapMesh, updateMapProjectionMeshes, setMapProjectionPreviewActive, rebuildGrids, exportMap, exportWorldBundle, buildWindArrows, buildOceanCurrentArrows, updateKoppenHoverHighlight, updateMapKoppenHoverHighlight } from './planet-mesh.js';
 import { detailFromSlider } from './detail-scale.js';
 import { KOPPEN_CLASSES } from './koppen.js';
 import { elevationToColor } from './color-map.js';
+import { formatLatLabel, formatLonLabel, getMapProjectionLabel, getMapProjectionParams, mapPointToXyz,
+         rotateMapProjectionParamsByDrag } from './map-projection.js';
 
 // ─── File Upload ──────────────────────────────────────────────────
 
@@ -59,7 +62,7 @@ function loadImageAsHeightmap(img, displayName) {
 (function loadDefaultHeightmap() {
     const img = new Image();
     img.onload = () => {
-        loadImageAsHeightmap(img, 'Earth (default)');
+        loadImageAsHeightmap(img, '地球（默认）');
         importBtn.click();
     };
     img.src = 'assets/earth.png';
@@ -95,11 +98,11 @@ function updateDetailWarning(detail) {
     if (detail > WARN_RED) {
         cg.classList.add('detail-red');
         warn.classList.add('red');
-        warn.textContent = '\u26A0 Very high \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 极高细节 - 生成可能较慢且不稳定';
     } else if (detail > WARN_ORANGE) {
         cg.classList.add('detail-orange');
         warn.classList.add('orange');
-        warn.textContent = '\u26A0 High detail \u2014 generation may be slow and unstable';
+        warn.textContent = '\u26A0 高细节 - 生成可能较慢且不稳定';
     } else {
         warn.textContent = '';
     }
@@ -214,7 +217,7 @@ reapplyBtn.addEventListener('click', () => {
 importBtn.addEventListener('click', () => {
     if (!storedGrayscale) return;
     importBtn.disabled = true;
-    importBtn.textContent = 'Importing\u2026';
+    importBtn.textContent = '导入中\u2026';
     clearReapplyPending();
     buildWindArrows(null);
     buildOceanCurrentArrows(null);
@@ -246,11 +249,10 @@ document.body.appendChild(hiddenGenBtn);
 hiddenGenBtn.addEventListener('generate-done', () => {
     hideBuildOverlay();
     importBtn.disabled = false;
-    importBtn.textContent = 'Import';
+    importBtn.textContent = '导入';
     state.importedHeightmap = true;
     // Update info text
-    const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Drag to rotate \u00b7 Scroll to zoom';
+    updateViewHint();
     // Sync view
     if (!state.climateComputed && CLIMATE_LAYERS.has(state.debugLayer)) {
         state.debugLayer = '';
@@ -279,7 +281,7 @@ const CLIMATE_LAYERS = new Set([
     'precipSummer', 'precipWinter',
     'rainShadowSummer', 'rainShadowWinter',
     'tempSummer', 'tempWinter',
-    'koppen', 'biome', 'continentality'
+    'koppen', 'biome', 'continentality', 'tempContinentality'
 ]);
 
 // ─── Visualization (debug layers, tabs, legend) ───────────────────
@@ -363,36 +365,36 @@ if (debugLayerEl) {
 // ─── Legend ────────────────────────────────────────────────────────
 
 const KOPPEN_DESCRIPTIONS = {
-    Af:  'Tropical rainforest \u2014 Hot and wet year-round.',
-    Am:  'Tropical monsoon \u2014 Brief dry season offset by heavy monsoon rains.',
-    Aw:  'Tropical savanna \u2014 Distinct wet and dry seasons.',
-    BWh: 'Hot desert \u2014 Extremely dry with scorching summers.',
-    BWk: 'Cold desert \u2014 Arid with cold winters.',
-    BSh: 'Hot steppe \u2014 Semi-arid grassland with hot summers.',
-    BSk: 'Cold steppe \u2014 Semi-arid with cold winters.',
-    Cfa: 'Humid subtropical \u2014 Hot humid summers, mild winters.',
-    Cfb: 'Oceanic \u2014 Mild year-round, cool summers, frequent rain.',
-    Cfc: 'Subpolar oceanic \u2014 Cool year-round with short summers.',
-    Csa: 'Hot-summer Mediterranean \u2014 Dry hot summers, mild wet winters.',
-    Csb: 'Warm-summer Mediterranean \u2014 Dry warm summers, mild wet winters.',
-    Csc: 'Cold-summer Mediterranean \u2014 Cool dry summers, mild wet winters.',
-    Cwa: 'Humid subtropical monsoon \u2014 Warm with dry winters.',
-    Cwb: 'Subtropical highland \u2014 Mild with dry winters.',
-    Cwc: 'Cold subtropical highland \u2014 Cool with dry winters.',
-    Dfa: 'Hot-summer continental \u2014 Hot summers, cold snowy winters.',
-    Dfb: 'Warm-summer continental \u2014 Warm summers, cold winters.',
-    Dfc: 'Subarctic \u2014 Long cold winters, brief cool summers.',
-    Dfd: 'Extremely cold subarctic \u2014 Harshest winters on Earth.',
-    Dsa: 'Hot-summer continental, dry summer.',
-    Dsb: 'Warm-summer continental, dry summer.',
-    Dsc: 'Subarctic, dry summer.',
-    Dsd: 'Extremely cold subarctic, dry summer.',
-    Dwa: 'Hot-summer continental, monsoon.',
-    Dwb: 'Warm-summer continental, monsoon.',
-    Dwc: 'Subarctic monsoon \u2014 Brief wet summers, long frigid winters.',
-    Dwd: 'Extremely cold subarctic, monsoon.',
-    ET:  'Tundra \u2014 Permafrost, only warmest month above 0\u00b0C.',
-    EF:  'Ice cap \u2014 Permanent ice, never above 0\u00b0C.',
+    Af:  '热带雨林气候 - 终年炎热湿润。',
+    Am:  '热带季风气候 - 短暂旱季后有强季风降雨。',
+    Aw:  '热带稀树草原气候 - 干湿季分明。',
+    BWh: '热带沙漠气候 - 极端干燥且夏季酷热。',
+    BWk: '冷沙漠气候 - 干旱且冬季寒冷。',
+    BSh: '热带草原气候 - 半干旱草原，夏季炎热。',
+    BSk: '冷草原气候 - 半干旱且冬季寒冷。',
+    Cfa: '湿润亚热带气候 - 夏季炎热潮湿，冬季温和。',
+    Cfb: '海洋性气候 - 全年温和，夏季凉爽，降雨频繁。',
+    Cfc: '副极地海洋性气候 - 全年凉爽，夏季短。',
+    Csa: '夏热地中海气候 - 夏季干热，冬季温和多雨。',
+    Csb: '夏暖地中海气候 - 夏季干暖，冬季温和多雨。',
+    Csc: '夏凉地中海气候 - 夏季凉爽干燥，冬季温和多雨。',
+    Cwa: '季风型湿润亚热带气候 - 温暖且冬季干燥。',
+    Cwb: '亚热带高原气候 - 温和且冬季干燥。',
+    Cwc: '冷凉亚热带高原气候 - 凉爽且冬季干燥。',
+    Dfa: '夏热大陆性气候 - 夏季炎热，冬季寒冷多雪。',
+    Dfb: '夏暖大陆性气候 - 夏季温暖，冬季寒冷。',
+    Dfc: '亚寒带气候 - 冬季漫长寒冷，夏季短暂凉爽。',
+    Dfd: '极寒亚寒带气候 - 地球上最严寒的冬季。',
+    Dsa: '夏热大陆性干夏气候 - 夏季干热，冬季寒冷。',
+    Dsb: '夏暖大陆性干夏气候 - 夏季干暖，冬季寒冷。',
+    Dsc: '亚寒带干夏气候 - 夏季凉爽干燥，冬季严寒。',
+    Dsd: '极寒亚寒带干夏气候 - 极罕见，兼具严寒和干夏。',
+    Dwa: '夏热大陆性季风气候 - 夏季湿热，冬季干冷。',
+    Dwb: '夏暖大陆性季风气候 - 夏季温暖多雨，冬季干冷。',
+    Dwc: '亚寒带季风气候 - 夏季短暂多雨，冬季漫长严寒。',
+    Dwd: '极寒亚寒带季风气候 - 极寒且冬季最干。',
+    ET:  '苔原气候 - 多年冻土，只有最暖月高于 0°C。',
+    EF:  '冰原气候 - 永久冰盖，全年不高于 0°C。',
 };
 
 function updateLegend(layer) {
@@ -409,9 +411,9 @@ function updateLegend(layer) {
         const pcts = stops.map((_, i) => Math.round(i / (stops.length - 1) * 100));
         const gradStr = colors.map((c, i) => `${c} ${pcts[i]}%`).join(', ');
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,${gradStr})"></div>` +
-            `<div class="legend-labels"><span>Deep Ocean</span><span>Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>深海</span><span>海平面</span><span>峰顶</span></div>`;
     } else if (layer === 'koppen') {
-        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">K\u00f6ppen climate classification</a></div>';
+        let html = '<div class="legend-koppen-header"><a href="https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification" target="_blank" rel="noopener">柯本气候分类</a></div>';
         html += '<div class="legend-koppen">';
         for (let i = 1; i < KOPPEN_CLASSES.length; i++) {
             const k = KOPPEN_CLASSES[i];
@@ -452,13 +454,13 @@ function updateLegend(layer) {
         });
     } else if (layer === 'biome') {
         const biomeStops = [
-            { color: [0.82,0.72,0.50], label: 'Desert' },
-            { color: [0.72,0.62,0.30], label: 'Steppe' },
-            { color: [0.42,0.50,0.18], label: 'Savanna' },
-            { color: [0.12,0.38,0.10], label: 'Forest' },
-            { color: [0.06,0.22,0.08], label: 'Taiga' },
-            { color: [0.35,0.32,0.22], label: 'Tundra' },
-            { color: [0.78,0.80,0.84], label: 'Ice' },
+            { color: [0.82,0.72,0.50], label: '沙漠' },
+            { color: [0.72,0.62,0.30], label: '草原' },
+            { color: [0.42,0.50,0.18], label: '稀树草原' },
+            { color: [0.12,0.38,0.10], label: '森林' },
+            { color: [0.06,0.22,0.08], label: '针叶林' },
+            { color: [0.35,0.32,0.22], label: '苔原' },
+            { color: [0.78,0.80,0.84], label: '冰原' },
         ];
         const biomeColors = biomeStops.map(s => `rgb(${Math.round(s.color[0]*255)},${Math.round(s.color[1]*255)},${Math.round(s.color[2]*255)})`);
         const biomePcts = biomeStops.map((_, i) => Math.round(i / (biomeStops.length - 1) * 100));
@@ -467,10 +469,10 @@ function updateLegend(layer) {
             `<div class="legend-labels"><span>${biomeStops[0].label}</span><span>${biomeStops[3].label}</span><span>${biomeStops[6].label}</span></div>`;
     } else if (layer === 'rainShadowSummer' || layer === 'rainShadowWinter') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,rgb(230,51,33) 0%,rgb(140,140,148) 50%,rgb(38,102,243) 100%)"></div>` +
-            `<div class="legend-labels"><span>Rain Shadow</span><span>Neutral</span><span>Windward</span></div>`;
+            `<div class="legend-labels"><span>雨影</span><span>中性</span><span>迎风</span></div>`;
     } else if (layer === 'landheightmap') {
         vizLegend.innerHTML = `<div class="legend-gradient" style="background:linear-gradient(to right,#000 0%,#fff 100%)"></div>` +
-            `<div class="legend-labels"><span>Ocean / Sea Level</span><span>Peak</span></div>`;
+            `<div class="legend-labels"><span>海洋 / 海平面</span><span>峰顶</span></div>`;
     } else {
         vizLegend.innerHTML = '';
     }
@@ -482,6 +484,7 @@ const buildOverlay  = document.getElementById('buildOverlay');
 const buildBarFill  = document.getElementById('buildBarFill');
 const buildBarLabel = document.getElementById('buildBarLabel');
 let overlayActive = false;
+let buildOverlayHideTimer = 0;
 
 function onProgress(pct, label) {
     if (!overlayActive) return;
@@ -491,6 +494,10 @@ function onProgress(pct, label) {
 
 function showBuildOverlay() {
     if (!buildBarFill || !buildOverlay) return;
+    if (buildOverlayHideTimer) {
+        clearTimeout(buildOverlayHideTimer);
+        buildOverlayHideTimer = 0;
+    }
     buildBarFill.style.transition = 'none';
     buildBarFill.style.transform = 'scaleX(0)';
     buildBarLabel.textContent = '';
@@ -501,7 +508,9 @@ function showBuildOverlay() {
 }
 
 function hideBuildOverlay() {
-    setTimeout(() => {
+    if (buildOverlayHideTimer) clearTimeout(buildOverlayHideTimer);
+    buildOverlayHideTimer = setTimeout(() => {
+        buildOverlayHideTimer = 0;
         overlayActive = false;
         if (buildOverlay) {
             buildOverlay.classList.add('hidden');
@@ -532,39 +541,376 @@ document.getElementById('gridSpacing').addEventListener('change', (e) => {
     rebuildGrids();
 });
 
-// Map center longitude
+// Flat map projection controls
+const mapProjectionGroup = document.getElementById('mapProjectionGroup');
+const sMapProjection = document.getElementById('sMapProjection');
 const mapCenterLonGroup = document.getElementById('mapCenterLonGroup');
 const sMapCenterLon = document.getElementById('sMapCenterLon');
 const vMapCenterLon = document.getElementById('vMapCenterLon');
+const mapCenterLatGroup = document.getElementById('mapCenterLatGroup');
+const sMapCenterLat = document.getElementById('sMapCenterLat');
+const vMapCenterLat = document.getElementById('vMapCenterLat');
+const mapRotationGroup = document.getElementById('mapRotationGroup');
+const sMapRotation = document.getElementById('sMapRotation');
+const vMapRotation = document.getElementById('vMapRotation');
+const mapZoomGroup = document.getElementById('mapZoomGroup');
+const sMapZoom = document.getElementById('sMapZoom');
+const vMapZoom = document.getElementById('vMapZoom');
+const mapViewResetGroup = document.getElementById('mapViewResetGroup');
+const mapViewResetBtn = document.getElementById('mapViewReset');
+const MAP_VIEW_DEFAULTS = { lon: 0, lat: 0, rotation: 0, zoom: 1 };
+const MAP_DRAG_MIN_DISTANCE = 4;
+const RAD_TO_DEG = 180 / Math.PI;
+const DEG_TO_RAD = Math.PI / 180;
+let mapProjectionRefreshTimer = 0;
+let mapProjectionRefreshToken = 0;
+let mapProjectionPreviewFrame = 0;
+let mapProjectionDragging = false;
+let mapZoomSyncing = false;
+
+function rebuildProjectedFlowOverlays() {
+    const layer = state.debugLayer;
+    const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
+                   layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
+    const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
+    if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
+    if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+}
+
+function rebuildMapProjectionView({ forceRebuild = false, overlays = true, previewOnly = false, lines = true } = {}) {
+    if (!state.mapMode) return;
+    const updated = !forceRebuild && updateMapProjectionMeshes(undefined, { previewOnly, lines });
+    if (forceRebuild || (!updated && !previewOnly)) buildMapMesh();
+    if (overlays) rebuildProjectedFlowOverlays();
+    updateViewHint();
+}
+
+function rebuildMapProjectionViewWithOverlay(label = '正在重绘地图投影…') {
+    if (!state.mapMode) return;
+    if (state.mapMesh) {
+        rebuildMapProjectionView();
+        return;
+    }
+    if (mapProjectionRefreshTimer) {
+        clearTimeout(mapProjectionRefreshTimer);
+        mapProjectionRefreshTimer = 0;
+    }
+    if (mapProjectionPreviewFrame) {
+        cancelAnimationFrame(mapProjectionPreviewFrame);
+        mapProjectionPreviewFrame = 0;
+    }
+    const token = ++mapProjectionRefreshToken;
+    showBuildOverlay();
+    onProgress(5, label);
+    setTimeout(() => {
+        if (token !== mapProjectionRefreshToken) return;
+        if (!state.mapMode) { hideBuildOverlay(); return; }
+        try {
+            onProgress(35, '正在构建地图网格…');
+            rebuildMapProjectionView({ forceRebuild: true });
+            onProgress(100, '地图投影已更新');
+        } catch (err) {
+            console.error('[MapProjection] Failed to rebuild projected map view:', err);
+            onProgress(100, '地图投影更新失败');
+        } finally {
+            hideBuildOverlay();
+        }
+    }, 50);
+}
+
+function scheduleMapProjectionPreview() {
+    if (!state.mapMode) return;
+    if (mapProjectionPreviewFrame) return;
+    mapProjectionPreviewFrame = requestAnimationFrame(() => {
+        mapProjectionPreviewFrame = 0;
+        rebuildMapProjectionView({
+            overlays: false,
+            previewOnly: mapProjectionDragging,
+            lines: true,
+        });
+    });
+}
+
+function flushMapProjectionPreview({ overlays = true } = {}) {
+    if (mapProjectionPreviewFrame) {
+        cancelAnimationFrame(mapProjectionPreviewFrame);
+        mapProjectionPreviewFrame = 0;
+    }
+    if (mapProjectionRefreshTimer) {
+        clearTimeout(mapProjectionRefreshTimer);
+        mapProjectionRefreshTimer = 0;
+    }
+    rebuildMapProjectionView({ overlays });
+    setMapProjectionPreviewActive(false);
+}
+
+function scheduleMapProjectionRefresh({ overlay = false, debounce = true } = {}) {
+    if (!state.mapMode) return;
+    if (overlay && !state.mapMesh) {
+        rebuildMapProjectionViewWithOverlay();
+        return;
+    }
+    if (mapProjectionRefreshTimer) {
+        if (!debounce) return;
+        clearTimeout(mapProjectionRefreshTimer);
+    }
+    mapProjectionRefreshTimer = setTimeout(() => {
+        mapProjectionRefreshTimer = 0;
+        rebuildMapProjectionView({ overlays: false });
+    }, 16);
+}
+
+function clampMapCenter(value, input) {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    return Math.max(min, Math.min(max, value));
+}
+
+function snapMapCenter(value, input) {
+    const min = Number(input.min);
+    const step = Number(input.step) || 1;
+    const decimals = step < 1 ? String(step).split('.')[1].length : 0;
+    const snapped = min + Math.round((value - min) / step) * step;
+    return Number(clampMapCenter(snapped, input).toFixed(decimals));
+}
+
+function wrapMapCenterLon(deg) {
+    let wrapped = ((deg + 180) % 360 + 360) % 360 - 180;
+    if (wrapped === -180 && deg > 0) wrapped = 180;
+    return wrapped;
+}
+
+function formatMapZoomLabel(value) {
+    return Number(value).toFixed(2) + '×';
+}
+
+function setMapCenterControls(lon, lat, { refresh = 'preview', overlay = false } = {}) {
+    const snappedLon = snapMapCenter(wrapMapCenterLon(lon), sMapCenterLon);
+    const snappedLat = snapMapCenter(lat, sMapCenterLat);
+    sMapCenterLon.value = snappedLon;
+    vMapCenterLon.textContent = formatLonLabel(snappedLon);
+    state.mapCenterLon = snappedLon * Math.PI / 180;
+    sMapCenterLat.value = snappedLat;
+    vMapCenterLat.textContent = formatLatLabel(snappedLat);
+    state.mapCenterLat = snappedLat * Math.PI / 180;
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function setMapRotationControls(rotation, { refresh = 'preview', overlay = false } = {}) {
+    const snappedRotation = snapMapCenter(wrapMapCenterLon(rotation), sMapRotation);
+    sMapRotation.value = snappedRotation;
+    vMapRotation.textContent = `${snappedRotation}°`;
+    state.mapRotation = snappedRotation * DEG_TO_RAD;
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function setMapOrientationControls(lon, lat, rotation, { refresh = 'preview', overlay = false } = {}) {
+    setMapCenterControls(lon, lat, { refresh: 'none' });
+    setMapRotationControls(rotation, { refresh: 'none' });
+    if (refresh === 'immediate') flushMapProjectionPreview();
+    else if (refresh === 'preview') scheduleMapProjectionPreview();
+    else if (refresh === 'schedule') scheduleMapProjectionRefresh({ overlay, debounce: overlay });
+}
+
+function setMapZoomControls(zoom, { immediate = false, syncCamera = true } = {}) {
+    const snappedZoom = snapMapCenter(zoom, sMapZoom);
+    sMapZoom.value = snappedZoom;
+    vMapZoom.textContent = formatMapZoomLabel(snappedZoom);
+    state.mapZoom = snappedZoom;
+    if (syncCamera && !mapZoomSyncing) setMapCameraZoom(snappedZoom, { immediate });
+}
+
+function resetMapViewControls() {
+    resetMapCameraView();
+    setMapOrientationControls(MAP_VIEW_DEFAULTS.lon, MAP_VIEW_DEFAULTS.lat, MAP_VIEW_DEFAULTS.rotation, { refresh: 'none' });
+    setMapZoomControls(MAP_VIEW_DEFAULTS.zoom, { immediate: true });
+    flushMapProjectionPreview();
+    updateViewHint();
+}
+
+if (sMapProjection) {
+    sMapProjection.addEventListener('change', () => {
+        state.mapProjection = sMapProjection.value;
+        flushMapProjectionPreview();
+    });
+}
 
 sMapCenterLon.addEventListener('input', () => {
-    const lon = +sMapCenterLon.value;
-    const suffix = lon > 0 ? 'E' : lon < 0 ? 'W' : '';
-    vMapCenterLon.textContent = Math.abs(lon) + '\u00B0' + suffix;
-    state.mapCenterLon = lon * Math.PI / 180;
-    if (state.mapMode && state.mapMesh) {
-        const builtLon = state.mapMesh._builtCenterLon || 0;
-        const dx = (builtLon - state.mapCenterLon) * (2 / Math.PI);
-        state.mapMesh.position.x = dx;
-        if (state.mapGridMesh) state.mapGridMesh.position.x = dx;
-    }
+    setMapCenterControls(+sMapCenterLon.value, +sMapCenterLat.value);
 });
 
 sMapCenterLon.addEventListener('change', () => {
-    if (state.mapMode) {
-        buildMapMesh();
-        const layer = state.debugLayer;
-        const isWind = layer === 'pressureSummer' || layer === 'pressureWinter' ||
-                       layer === 'windSpeedSummer' || layer === 'windSpeedWinter';
-        const isOcean = layer === 'oceanCurrentSummer' || layer === 'oceanCurrentWinter';
-        if (isWind) buildWindArrows(layer.includes('Winter') ? 'winter' : 'summer');
-        if (isOcean) buildOceanCurrentArrows(layer.includes('Winter') ? 'winter' : 'summer');
+    flushMapProjectionPreview();
+});
+
+sMapCenterLat.addEventListener('input', () => {
+    setMapCenterControls(+sMapCenterLon.value, +sMapCenterLat.value);
+});
+
+sMapCenterLat.addEventListener('change', () => {
+    flushMapProjectionPreview();
+});
+
+if (sMapRotation) {
+    sMapRotation.addEventListener('input', () => {
+        setMapRotationControls(+sMapRotation.value);
+    });
+
+    sMapRotation.addEventListener('change', () => {
+        flushMapProjectionPreview();
+    });
+}
+
+if (sMapZoom) {
+    sMapZoom.addEventListener('input', () => {
+        setMapZoomControls(+sMapZoom.value);
+    });
+}
+
+window.addEventListener('map-zoom-changed', (e) => {
+    const zoom = e.detail?.zoom;
+    if (!Number.isFinite(zoom) || !sMapZoom) return;
+    if (mapZoomSyncing) return;
+    mapZoomSyncing = true;
+    try {
+        const snappedZoom = snapMapCenter(zoom, sMapZoom);
+        setMapZoomControls(snappedZoom, { syncCamera: false });
+        if (Math.abs(snappedZoom - zoom) > 0.0001) setMapCameraZoom(snappedZoom);
+    } finally {
+        mapZoomSyncing = false;
     }
 });
 
-// Globe / Map toggle
-document.getElementById('viewMode').addEventListener('change', (e) => {
-    state.mapMode = e.target.value === 'map';
+if (mapViewResetBtn) {
+    mapViewResetBtn.addEventListener('click', resetMapViewControls);
+}
+
+function initMapCenterDrag() {
+    let drag = null;
+    const activePointers = new Set();
+
+    function canDragMapCenter(e) {
+        return state.mapMode && state.curData && e.button === 0 && !e.ctrlKey &&
+            !(state.isTouchDevice && state.editMode);
+    }
+
+    function pointerToMapPoint(e) {
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        const ndcX = (e.clientX - rect.left) / rect.width * 2 - 1;
+        const ndcY = -((e.clientY - rect.top) / rect.height * 2 - 1);
+        return {
+            x: mapCamera.position.x + ndcX * (mapCamera.right - mapCamera.left) / (2 * mapCamera.zoom),
+            y: mapCamera.position.y + ndcY * (mapCamera.top - mapCamera.bottom) / (2 * mapCamera.zoom),
+        };
+    }
+
+    function cancelDrag() {
+        if (!drag) return;
+        const id = drag.id;
+        drag = null;
+        mapProjectionDragging = false;
+        setMapProjectionPreviewActive(false);
+        canvas.classList.remove('map-center-dragging');
+        try { canvas.releasePointerCapture(id); } catch (_) {}
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+        if (!canDragMapCenter(e)) return;
+        activePointers.add(e.pointerId);
+        if (e.pointerType === 'touch' && activePointers.size > 1) {
+            cancelDrag();
+            return;
+        }
+        const startPoint = pointerToMapPoint(e);
+        if (!startPoint) return;
+        const params = getMapProjectionParams();
+        drag = {
+            id: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startPoint,
+            startParams: { ...params },
+            moved: false,
+        };
+        mapProjectionDragging = true;
+        setMapProjectionPreviewActive(true, params);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        canvas.classList.add('map-center-dragging');
+        try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    }, true);
+
+    canvas.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const dx = e.clientX - drag.startX;
+        const dy = e.clientY - drag.startY;
+        drag.moved = drag.moved || Math.hypot(dx, dy) >= MAP_DRAG_MIN_DISTANCE;
+        const currentPoint = pointerToMapPoint(e);
+        if (currentPoint) {
+            const next = rotateMapProjectionParamsByDrag(drag.startParams, drag.startPoint, currentPoint);
+            if (next) {
+                setMapOrientationControls(
+                    next.centerLon * RAD_TO_DEG,
+                    next.centerLat * RAD_TO_DEG,
+                    next.rotation * RAD_TO_DEG,
+                    { overlay: false }
+                );
+            }
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }, true);
+
+    function finishDrag(e) {
+        activePointers.delete(e.pointerId);
+        if (!drag || e.pointerId !== drag.id) return;
+        const moved = drag.moved;
+        drag = null;
+        mapProjectionDragging = false;
+        canvas.classList.remove('map-center-dragging');
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+        if (mapProjectionRefreshTimer) {
+            clearTimeout(mapProjectionRefreshTimer);
+            mapProjectionRefreshTimer = 0;
+        }
+        if (moved) flushMapProjectionPreview();
+        else setMapProjectionPreviewActive(false);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }
+
+    canvas.addEventListener('pointerup', finishDrag, true);
+    canvas.addEventListener('pointercancel', finishDrag, true);
+}
+
+initMapCenterDrag();
+
+function updateViewHint() {
+    const globeHint = state.isTouchDevice
+        ? '拖拽旋转 · 双指缩放'
+        : '拖拽旋转 · 滚轮缩放';
+    const hint = state.mapMode
+        ? `左键旋转投影 · 右键平移 · 滚轮缩放 · ${getMapProjectionLabel()} 投影`
+        : state.freeCameraMode
+            ? 'WASD 移动 · Q/E 上下 · 按住鼠标右键转动视角'
+            : globeHint;
+    for (const id of ['topInfo', 'info']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = hint;
+    }
+}
+
+// Globe / Free Camera / Map toggle
+function setViewMode(mode) {
+    state.mapMode = mode === 'map';
+    state.freeCameraMode = mode === 'free';
+    setFreeCameraControls(state.freeCameraMode);
+
     if (state.mapMode) {
         if (state.planetMesh) state.planetMesh.visible = false;
         waterMesh.visible = false;
@@ -574,13 +920,14 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         if (state.arrowGroup) state.arrowGroup.visible = false;
         if (!state.mapMesh) {
             showBuildOverlay();
-            onProgress(0, 'Building map mesh\u2026');
+            onProgress(0, '正在构建地图网格\u2026');
             setTimeout(() => {
                 buildMapMesh();
                 if (state.mapMesh) state.mapMesh.visible = true;
                 hideBuildOverlay();
             }, 50);
         }
+        setMapProjectionPreviewActive(false);
         if (state.mapMesh) state.mapMesh.visible = true;
         if (state.mapGridMesh) state.mapGridMesh.visible = state.gridEnabled;
         if (state.globeGridMesh) state.globeGridMesh.visible = false;
@@ -604,13 +951,19 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         updateMapCameraFrustum();
         mapCtrl.target.set(0, 0, 0);
         mapCtrl.update();
+        mapProjectionGroup.style.display = '';
         mapCenterLonGroup.style.display = '';
+        mapCenterLatGroup.style.display = '';
+        if (mapRotationGroup) mapRotationGroup.style.display = '';
+        if (mapZoomGroup) mapZoomGroup.style.display = '';
+        if (mapViewResetGroup) mapViewResetGroup.style.display = '';
     } else {
         if (state.planetMesh) state.planetMesh.visible = true;
         atmosMesh.visible = true;
         starsMesh.visible = true;
         if (state.wireMesh) state.wireMesh.visible = true;
         if (state.arrowGroup) state.arrowGroup.visible = true;
+        setMapProjectionPreviewActive(false);
         if (state.mapMesh) state.mapMesh.visible = false;
         if (state.mapGridMesh) state.mapGridMesh.visible = false;
         if (state.globeGridMesh) state.globeGridMesh.visible = state.gridEnabled;
@@ -629,31 +982,201 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         waterMesh.visible = !state.debugLayer;
         scene.background = new THREE.Color(0x030308);
         mapCtrl.enabled = false;
-        ctrl.enabled = true;
+        ctrl.enabled = !state.freeCameraMode;
+        if (!state.freeCameraMode) recenterGlobeCamera();
+        mapProjectionGroup.style.display = 'none';
         mapCenterLonGroup.style.display = 'none';
+        mapCenterLatGroup.style.display = 'none';
+        if (mapRotationGroup) mapRotationGroup.style.display = 'none';
+        if (mapZoomGroup) mapZoomGroup.style.display = 'none';
+        if (mapViewResetGroup) mapViewResetGroup.style.display = 'none';
     }
-});
+
+    updateSuperPlateBorders();
+    updateViewHint();
+}
+
+document.getElementById('viewMode').addEventListener('change', (e) => setViewMode(e.target.value));
 
 // ─── Export modal ─────────────────────────────────────────────────
 
 (function initExport() {
-    const overlay   = document.getElementById('exportOverlay');
-    const closeBtn  = document.getElementById('exportClose');
-    const cancelBtn = document.getElementById('exportCancel');
-    const goBtn     = document.getElementById('exportGo');
-    const widthEl   = document.getElementById('exportWidth');
-    const dimsEl    = document.getElementById('exportDims');
-    const typeEl    = document.getElementById('exportType');
-    const openBtn   = document.getElementById('exportBtn');
+    const overlay        = document.getElementById('exportOverlay');
+    const closeBtn       = document.getElementById('exportClose');
+    const cancelBtn      = document.getElementById('exportCancel');
+    const goBtn          = document.getElementById('exportGo');
+    const widthEl        = document.getElementById('exportWidth');
+    const dimsEl         = document.getElementById('exportDims');
+    const typeEl         = document.getElementById('exportType');
+    const openBtn        = document.getElementById('exportBtn');
+    const exportAllBtn   = document.getElementById('exportAllGo');
+    const modelFormatEl  = document.getElementById('exportModelFormat');
+    const debugLayerList = document.getElementById('exportDebugLayerList');
+
+    const DEFAULT_BUNDLE_TYPES = [
+        { type: 'color',     label: '地形图' },
+        { type: 'biome',     label: '卫星图' },
+        { type: 'koppen',    label: '气候图' },
+        { type: 'heightmap', label: '高度图' },
+    ];
+    const EXTRA_BUNDLE_TYPES = [
+        { type: 'landmask', label: '陆地遮罩' },
+    ];
+    const DEFAULT_OPTIONAL_EXCLUDE = new Set(['', 'biome', 'koppen', 'heightmap']);
 
     function updateDims() {
         const w = +widthEl.value;
         dimsEl.textContent = w + ' \u00D7 ' + (w / 2);
     }
 
+    function debugExportOptions() {
+        const out = [...EXTRA_BUNDLE_TYPES];
+        const seen = new Set(out.map(opt => opt.type));
+        if (!debugLayerEl) return out;
+        for (const opt of debugLayerEl.options) {
+            const type = opt.value;
+            if (!type || DEFAULT_OPTIONAL_EXCLUDE.has(type) || seen.has(type)) continue;
+            out.push({ type, label: opt.textContent.trim() || type });
+            seen.add(type);
+        }
+        return out;
+    }
+
+    function renderExportDebugOptions() {
+        if (!debugLayerList) return;
+        const checked = new Set([...debugLayerList.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value));
+        debugLayerList.replaceChildren();
+        const options = debugExportOptions();
+        if (!options.length) {
+            const note = document.createElement('p');
+            note.className = 'export-note';
+            note.textContent = '当前没有额外的检视图层可导出。';
+            debugLayerList.appendChild(note);
+            return;
+        }
+        for (const opt of options) {
+            const label = document.createElement('label');
+            label.className = 'export-check';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = opt.type;
+            input.checked = checked.has(opt.type);
+            label.append(input, document.createTextNode(opt.label));
+            debugLayerList.appendChild(label);
+        }
+    }
+
+    function initDebugOptionDragSelect() {
+        if (!debugLayerList) return;
+        let drag = null;
+        let suppressClick = false;
+        const inputSelector = 'input[type="checkbox"]';
+
+        function optionInputs() {
+            return [...debugLayerList.querySelectorAll(inputSelector)];
+        }
+
+        function checkboxAt(clientX, clientY) {
+            const el = document.elementFromPoint(clientX, clientY);
+            const label = el?.closest?.('.export-check');
+            if (!label || !debugLayerList.contains(label)) return null;
+            return label.querySelector(inputSelector);
+        }
+
+        function applyTo(input) {
+            if (!drag || !input || drag.visited.has(input)) return;
+            input.checked = drag.checked;
+            drag.visited.add(input);
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function applyRangeTo(input) {
+            if (!drag || !input) return;
+            const inputs = optionInputs();
+            const nextIndex = inputs.indexOf(input);
+            if (nextIndex === -1) return;
+            const from = Number.isInteger(drag.lastIndex) ? drag.lastIndex : nextIndex;
+            const lo = Math.min(from, nextIndex);
+            const hi = Math.max(from, nextIndex);
+            for (let i = lo; i <= hi; i++) applyTo(inputs[i]);
+            drag.lastIndex = nextIndex;
+        }
+
+        function autoScroll(clientY) {
+            const rect = debugLayerList.getBoundingClientRect();
+            const edge = 28;
+            if (clientY < rect.top + edge) debugLayerList.scrollTop -= 12;
+            else if (clientY > rect.bottom - edge) debugLayerList.scrollTop += 12;
+        }
+
+        debugLayerList.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            const input = checkboxAt(e.clientX, e.clientY);
+            if (!input) return;
+            const startIndex = optionInputs().indexOf(input);
+            if (startIndex === -1) return;
+            drag = { id: e.pointerId, checked: !input.checked, visited: new Set(), lastIndex: startIndex };
+            suppressClick = true;
+            debugLayerList.classList.add('drag-selecting');
+            applyTo(input);
+            e.preventDefault();
+            try { debugLayerList.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        debugLayerList.addEventListener('pointermove', (e) => {
+            if (!drag || e.pointerId !== drag.id) return;
+            autoScroll(e.clientY);
+            applyRangeTo(checkboxAt(e.clientX, e.clientY));
+            e.preventDefault();
+        });
+
+        function finish(e) {
+            if (!drag || e.pointerId !== drag.id) return;
+            drag = null;
+            debugLayerList.classList.remove('drag-selecting');
+            try { debugLayerList.releasePointerCapture(e.pointerId); } catch (_) {}
+            e.preventDefault();
+        }
+
+        debugLayerList.addEventListener('pointerup', finish);
+        debugLayerList.addEventListener('pointercancel', finish);
+        debugLayerList.addEventListener('click', (e) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+    }
+
+    function selectedBundleTypes() {
+        const labels = new Map(debugExportOptions().map(opt => [opt.type, opt.label]));
+        const out = [...DEFAULT_BUNDLE_TYPES];
+        if (!debugLayerList) return out;
+        for (const input of debugLayerList.querySelectorAll('input[type="checkbox"]:checked')) {
+            out.push({ type: input.value, label: labels.get(input.value) || input.value });
+        }
+        return out;
+    }
+
+    function needsClimate(types) {
+        return types.some(item => item && CLIMATE_LAYERS.has(item.type));
+    }
+
+    async function ensureClimate(types) {
+        if (state.climateComputed || !needsClimate(types)) return;
+        onProgress(0, '正在计算气候...');
+        await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+    }
+
+    function reportExportError(err) {
+        console.error(err);
+        alert('导出失败，请降低导出宽度、减少可选图层或更换浏览器后重试。');
+    }
+
     function openModal() {
         overlay.classList.remove('hidden');
         updateDims();
+        renderExportDebugOptions();
         for (const opt of typeEl.options) {
             if (opt.value === 'biome' || opt.value === 'koppen') {
                 opt.disabled = !state.climateComputed;
@@ -666,6 +1189,7 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
     openBtn.addEventListener('click', openModal);
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
+    initDebugOptionDragSelect();
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal();
@@ -677,29 +1201,30 @@ document.getElementById('viewMode').addEventListener('change', (e) => {
         const w = +widthEl.value;
         closeModal();
         showBuildOverlay();
-        onProgress(0, 'Preparing export...');
-        await exportMap(type, w, onProgress);
-        hideBuildOverlay();
+        try {
+            onProgress(0, '正在准备导出...');
+            await exportMap(type, w, onProgress);
+        } catch (err) {
+            reportExportError(err);
+        } finally {
+            hideBuildOverlay();
+        }
     });
-
-    const exportAllBtn = document.getElementById('exportAllGo');
-    const EXPORT_ALL_TYPES = [
-        { type: 'biome',         label: 'Satellite' },
-        { type: 'koppen',        label: 'Climate' },
-        { type: 'landheightmap', label: 'Heightmap' },
-        { type: 'landmask',      label: 'Land Mask' },
-    ];
 
     exportAllBtn.addEventListener('click', async () => {
         const w = +widthEl.value;
+        const textureTypes = selectedBundleTypes();
+        const modelFormat = modelFormatEl ? modelFormatEl.value : '';
         closeModal();
         showBuildOverlay();
-        if (!state.climateComputed) {
-            onProgress(0, 'Computing climate...');
-            await new Promise(resolve => computeClimateViaWorker(onProgress, resolve));
+        try {
+            await ensureClimate(textureTypes);
+            await exportWorldBundle({ width: w, textureTypes, modelFormat }, onProgress);
+        } catch (err) {
+            reportExportError(err);
+        } finally {
+            hideBuildOverlay();
         }
-        await exportMapBatch(EXPORT_ALL_TYPES, w, onProgress);
-        hideBuildOverlay();
     });
 })();
 
@@ -716,7 +1241,7 @@ if (isMobileLayout()) {
 sidebarToggle.addEventListener('click', () => {
     const collapsed = uiPanel.classList.toggle('collapsed');
     sidebarToggle.innerHTML = collapsed ? '\u00BB' : '\u00AB';
-    sidebarToggle.title = collapsed ? 'Show panel' : 'Collapse panel';
+    sidebarToggle.title = collapsed ? '显示面板' : '收起面板';
 });
 
 (function initBottomSheet() {
@@ -803,7 +1328,7 @@ sidebarToggle.addEventListener('click', () => {
 
 if (state.isTouchDevice) {
     const infoEl = document.getElementById('info');
-    if (infoEl) infoEl.textContent = 'Import a heightmap to get started';
+    if (infoEl) infoEl.textContent = '导入高度图以开始';
 }
 
 // Disable export widths > 8192 on touch devices
@@ -813,7 +1338,7 @@ if (state.isTouchDevice) {
         for (const opt of exportWidth.options) {
             if (+opt.value > 8192) {
                 opt.disabled = true;
-                opt.textContent = opt.value + ' (too large for mobile)';
+                opt.textContent = opt.value + '（移动端过大）';
             }
         }
     }
@@ -834,11 +1359,20 @@ window.addEventListener('orientationchange', () => {
 
 function animate() {
     requestAnimationFrame(animate);
-    if (state.mapMode) { tickMapZoom(); mapCtrl.update(); } else { tickZoom(); ctrl.update(); }
-    if (!state.mapMode && state.planetMesh && document.getElementById('chkRotate').checked) {
+    if (state.mapMode) {
+        tickMapZoom();
+        mapCtrl.update();
+    } else if (state.freeCameraMode) {
+        tickFreeCamera();
+    } else {
+        tickZoom();
+        ctrl.update();
+    }
+    if (!state.mapMode && !state.freeCameraMode && state.planetMesh && document.getElementById('chkRotate').checked) {
         state.planetMesh.rotation.y += 0.0008;
         waterMesh.rotation.y = state.planetMesh.rotation.y;
         if (state.wireMesh) state.wireMesh.rotation.y = state.planetMesh.rotation.y;
+        if (state.superPlateBorderMesh) state.superPlateBorderMesh.rotation.y = state.planetMesh.rotation.y;
         if (state.arrowGroup) state.arrowGroup.rotation.y = state.planetMesh.rotation.y;
         if (state.windArrowGroup) state.windArrowGroup.rotation.y = state.planetMesh.rotation.y;
         if (state.oceanCurrentArrowGroup) state.oceanCurrentArrowGroup.rotation.y = state.planetMesh.rotation.y;
@@ -914,14 +1448,8 @@ window.addEventListener('resize', () => {
         if (Math.abs(d.z) < 1e-10) return -1;
         const t = -o.z / d.z;
         const wx = o.x + t * d.x, wy = o.y + t * d.y;
-        const PI = Math.PI, sx = 2 / PI;
-        let lon = wx / sx + (state.mapCenterLon || 0);
-        const lat = wy / sx;
-        if (lat < -PI / 2 || lat > PI / 2) return -1;
-        if (lon > PI) lon -= 2 * PI;
-        else if (lon < -PI) lon += 2 * PI;
-        const cosLat = Math.cos(lat);
-        return findNearestRegion(cosLat * Math.sin(lon), Math.sin(lat), cosLat * Math.cos(lon));
+        const xyz = mapPointToXyz(wx, wy);
+        return xyz ? findNearestRegion(xyz[0], xyz[1], xyz[2]) : -1;
     }
 
     function updateHoverInfo(e) {
@@ -948,23 +1476,23 @@ window.addEventListener('resize', () => {
         const heightKm = elev <= 0 ? (elev * 10).toFixed(1) : (6 * elev * elev).toFixed(1);
         const isOcean = elev <= 0;
 
-        let html = `<span class="hi-label">Elev</span> ${heightKm} km (${isOcean ? 'ocean' : 'land'})<br>`;
-        html += `<span class="hi-label">Coord</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? 'E' : 'W'}`;
+        let html = `<span class="hi-label">高程</span> ${heightKm} km（${isOcean ? '海洋' : '陆地'}）<br>`;
+        html += `<span class="hi-label">坐标</span> ${Math.abs(lat).toFixed(1)}\u00b0${lat >= 0 ? '北' : '南'}, ${Math.abs(lon).toFixed(1)}\u00b0${lon >= 0 ? '东' : '西'}`;
 
         if (d.r_temperature_summer && d.r_precip_summer) {
             const ts = d.r_temperature_summer[r], tw = d.r_temperature_winter[r];
             const ps = d.r_precip_summer[r], pw = d.r_precip_winter[r];
             const tAvg = ((ts + tw) / 2).toFixed(1);
             const pTotal = Math.round(ps + pw);
-            html += `<br><span class="hi-label">Temp</span> ${tAvg}\u00b0C avg (${ts.toFixed(1)} summer, ${tw.toFixed(1)} winter)`;
-            html += `<br><span class="hi-label">Prec</span> ${pTotal} mm/yr`;
+            html += `<br><span class="hi-label">温度</span> ${tAvg}\u00b0C 平均（夏季 ${ts.toFixed(1)}，冬季 ${tw.toFixed(1)}）`;
+            html += `<br><span class="hi-label">降水</span> ${pTotal} mm/年`;
         }
 
         if (d.debugLayers?.koppen) {
             const kIdx = d.debugLayers.koppen[r];
             if (kIdx > 0 && kIdx < KOPPEN_CLASSES.length) {
                 const k = KOPPEN_CLASSES[kIdx];
-                html += `<br><span class="hi-label">Clim</span> ${k.code} \u2014 ${k.name}`;
+                html += `<br><span class="hi-label">气候</span> ${k.code} \u2014 ${k.name}`;
             }
         }
 

@@ -200,7 +200,7 @@ function handleGenerate(data) {
     try {
         const tTotal0 = performance.now();
 
-        progress(0, 'Shaping the world\u2026');
+        progress(0, '正在塑造世界\u2026');
         const seed = overrideSeed ?? Math.floor(Math.random() * 16777216);
         const rng = makeRng(seed);
 
@@ -216,18 +216,18 @@ function handleGenerate(data) {
         const t_xyz = generateTriangleCenters(mesh, r_xyz);
         timing.push({ stage: 'Triangle centers', ms: performance.now() - t0 });
 
-        progress(10, 'Generating coarse plates\u2026');
+        progress(10, '正在生成粗略板块\u2026');
         t0 = performance.now();
         const { coarseMesh, coarse_xyz, coarse_r_plate, coarsePlateSeeds, coarsePlateVec, coarsePlateIsOcean } =
             generateCoarsePlates(seed, P, numContinents, continentSizeVariety, landCoverage);
         timing.push({ stage: `Coarse plates (${P} plates, ${numContinents} continents)`, ms: performance.now() - t0 });
 
-        progress(20, 'Projecting plates\u2026');
+        progress(20, '正在投射板块\u2026');
         t0 = performance.now();
         const r_plate = projectCoarsePlates(mesh, r_xyz, coarseMesh, coarse_xyz, coarse_r_plate, seed, P);
         timing.push({ stage: 'Project coarse → hi-res', ms: performance.now() - t0 });
 
-        progress(25, 'Smoothing boundaries\u2026');
+        progress(25, '正在平滑边界\u2026');
         t0 = performance.now();
         smoothAndReconnectPlates(mesh, r_plate, coarsePlateSeeds, 3);
         timing.push({ stage: 'Smooth projected plates', ms: performance.now() - t0 });
@@ -303,7 +303,7 @@ function handleGenerate(data) {
             }
         }
 
-        progress(35, 'Raising mountains\u2026');
+        progress(35, '正在抬升山脉\u2026');
         t0 = performance.now();
         const { r_elevation, mountain_r, coastline_r, ocean_r, r_stress, debugLayers, _timing } =
             assignElevation(mesh, r_xyz, plateIsOcean, r_plate, plateVec, plateSeeds, noise, nMag, seed, spread, plateDensity, superPlateData, r_mantleField);
@@ -313,7 +313,7 @@ function handleGenerate(data) {
         const r_dampen = computeDetailDampenField(debugLayers);
         const r_orogenic = computeOrogenicField(debugLayers);
 
-        progress(60, 'Eroding terrain\u2026');
+        progress(60, '正在侵蚀地形\u2026');
         t0 = performance.now();
         const { dl_erosionDelta, postTiming } = runPostProcessing(mesh, r_xyz, r_elevation, { smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, terrainWarp }, neighborDist, seed, debugLayers.hotspot, r_dampen, r_orogenic);
         timing.push({ stage: 'Terrain post-processing (total)', ms: performance.now() - t0 });
@@ -335,7 +335,7 @@ function handleGenerate(data) {
         let windResult = null, oceanResult = null, precipResult = null, tempResult = null;
 
         if (!skipClimate) {
-            progress(70, 'Simulating wind patterns\u2026');
+            progress(70, '正在模拟风场\u2026');
             t0 = performance.now();
             windResult = computeWind(mesh, r_xyz, r_elevation, plateIsOcean, r_plate, noise);
             timing.push({ stage: 'Wind simulation', ms: performance.now() - t0 });
@@ -346,13 +346,13 @@ function handleGenerate(data) {
             debugLayers.windSpeedWinter = windResult.r_wind_speed_winter;
             debugLayers.continentality = windResult.r_continentality;
 
-            progress(78, 'Computing ocean currents\u2026');
+            progress(78, '正在计算洋流\u2026');
             t0 = performance.now();
             oceanResult = computeOceanCurrents(mesh, r_xyz, r_elevation, windResult);
             timing.push({ stage: 'Ocean currents', ms: performance.now() - t0 });
             if (oceanResult._oceanTiming) timing.push(...oceanResult._oceanTiming);
 
-            progress(82, 'Computing precipitation\u2026');
+            progress(82, '正在计算降水\u2026');
             t0 = performance.now();
             precipResult = computePrecipitation(mesh, r_xyz, r_elevation, windResult, oceanResult, precipitationOffset, landCoverage);
             timing.push({ stage: 'Precipitation', ms: performance.now() - t0 });
@@ -362,7 +362,7 @@ function handleGenerate(data) {
             debugLayers.rainShadowSummer = precipResult.r_rainshadow_summer;
             debugLayers.rainShadowWinter = precipResult.r_rainshadow_winter;
 
-            progress(86, 'Computing temperature\u2026');
+            progress(86, '正在计算温度\u2026');
             t0 = performance.now();
             tempResult = computeTemperature(mesh, r_xyz, r_elevation, windResult, oceanResult, precipResult, temperatureOffset);
             timing.push({ stage: 'Temperature', ms: performance.now() - t0 });
@@ -376,7 +376,7 @@ function handleGenerate(data) {
             timing.push({ stage: 'Köppen classification', ms: performance.now() - t0 });
         }
 
-        progress(skipClimate ? 75 : 90, 'Computing triangle elevations\u2026');
+        progress(skipClimate ? 75 : 90, '正在计算三角面高程\u2026');
         t0 = performance.now();
         const t_elevation = computeTriangleElevations(mesh, r_elevation);
         timing.push({ stage: 'Triangle elevations', ms: performance.now() - t0 });
@@ -483,13 +483,13 @@ function handleReapply(data) {
     try {
         const tTotal0 = performance.now();
 
-        progress(0, 'Reapplying terrain\u2026');
+        progress(0, '正在重新应用地形\u2026');
 
         let t0 = performance.now();
         const r_elevation = new Float32Array(W.prePostElev);
         const tClone = performance.now() - t0;
 
-        progress(20, 'Eroding terrain\u2026');
+        progress(20, '正在侵蚀地形\u2026');
         t0 = performance.now();
         const { dl_erosionDelta, postTiming } = runPostProcessing(W.mesh, W.r_xyz, r_elevation, data, W.neighborDist, W.seed, undefined, W.r_dampen, W.r_orogenic);
         const tPost = performance.now() - t0;
@@ -501,22 +501,22 @@ function handleReapply(data) {
         let tWind = 0, tOcean = 0, tPrecip = 0, tTemp = 0;
 
         if (!skipClimate) {
-            progress(60, 'Simulating wind patterns\u2026');
+            progress(60, '正在模拟风场\u2026');
             t0 = performance.now();
             windResult = computeWind(W.mesh, W.r_xyz, r_elevation, W.plateIsOcean, W.r_plate, W.noise);
             tWind = performance.now() - t0;
 
-            progress(75, 'Computing ocean currents\u2026');
+            progress(75, '正在计算洋流\u2026');
             t0 = performance.now();
             oceanResult = computeOceanCurrents(W.mesh, W.r_xyz, r_elevation, windResult);
             tOcean = performance.now() - t0;
 
-            progress(80, 'Computing precipitation\u2026');
+            progress(80, '正在计算降水\u2026');
             t0 = performance.now();
             precipResult = computePrecipitation(W.mesh, W.r_xyz, r_elevation, windResult, oceanResult, precipitationOffset, landCoverage);
             tPrecip = performance.now() - t0;
 
-            progress(85, 'Computing temperature\u2026');
+            progress(85, '正在计算温度\u2026');
             t0 = performance.now();
             tempResult = computeTemperature(W.mesh, W.r_xyz, r_elevation, windResult, oceanResult, precipResult, temperatureOffset);
             tTemp = performance.now() - t0;
@@ -528,7 +528,7 @@ function handleReapply(data) {
             W.cachedOcean = null;
         }
 
-        progress(skipClimate ? 70 : 90, 'Computing triangle elevations\u2026');
+        progress(skipClimate ? 70 : 90, '正在计算三角面高程\u2026');
         t0 = performance.now();
         const t_elevation = computeTriangleElevations(W.mesh, r_elevation);
         const tTriElev = performance.now() - t0;
@@ -584,7 +584,7 @@ function handleEditRecompute(data) {
     try {
         const tTotal0 = performance.now();
 
-        progress(0, 'Rebuilding elevation\u2026');
+        progress(0, '正在重建高程\u2026');
 
         // Update retained plate state
         W.plateIsOcean = new Set(data.plateIsOcean);
@@ -612,7 +612,7 @@ function handleEditRecompute(data) {
         W.r_dampen = r_dampen ? new Float32Array(r_dampen) : null;
         W.r_orogenic = r_orogenic ? new Float32Array(r_orogenic) : null;
 
-        progress(50, 'Eroding terrain\u2026');
+        progress(50, '正在侵蚀地形\u2026');
         t0 = performance.now();
         const { dl_erosionDelta, postTiming } = runPostProcessing(mesh, r_xyz, r_elevation, data, W.neighborDist, W.seed, debugLayers.hotspot, r_dampen, r_orogenic);
         const tPost = performance.now() - t0;
@@ -625,7 +625,7 @@ function handleEditRecompute(data) {
         let tWind = 0, tOcean = 0, tPrecip = 0, tTemp = 0;
 
         if (!skipClimate) {
-            progress(65, 'Simulating wind patterns\u2026');
+            progress(65, '正在模拟风场\u2026');
             t0 = performance.now();
             windResult = computeWind(mesh, r_xyz, r_elevation, plateIsOcean, r_plate, W.noise);
             tWind = performance.now() - t0;
@@ -635,12 +635,12 @@ function handleEditRecompute(data) {
             debugLayers.windSpeedWinter = windResult.r_wind_speed_winter;
             debugLayers.continentality = windResult.r_continentality;
 
-            progress(78, 'Computing ocean currents\u2026');
+            progress(78, '正在计算洋流\u2026');
             t0 = performance.now();
             oceanResult = computeOceanCurrents(mesh, r_xyz, r_elevation, windResult);
             tOcean = performance.now() - t0;
 
-            progress(82, 'Computing precipitation\u2026');
+            progress(82, '正在计算降水\u2026');
             t0 = performance.now();
             precipResult = computePrecipitation(mesh, r_xyz, r_elevation, windResult, oceanResult, precipitationOffset, landCoverage);
             tPrecip = performance.now() - t0;
@@ -649,7 +649,7 @@ function handleEditRecompute(data) {
             debugLayers.rainShadowSummer = precipResult.r_rainshadow_summer;
             debugLayers.rainShadowWinter = precipResult.r_rainshadow_winter;
 
-            progress(86, 'Computing temperature\u2026');
+            progress(86, '正在计算温度\u2026');
             t0 = performance.now();
             tempResult = computeTemperature(mesh, r_xyz, r_elevation, windResult, oceanResult, precipResult, temperatureOffset);
             tTemp = performance.now() - t0;
@@ -666,7 +666,7 @@ function handleEditRecompute(data) {
             W.cachedOcean = null;
         }
 
-        progress(skipClimate ? 75 : 90, 'Computing triangle elevations\u2026');
+        progress(skipClimate ? 75 : 90, '正在计算三角面高程\u2026');
         t0 = performance.now();
         const t_elevation = computeTriangleElevations(mesh, r_elevation);
         const tTriElev = performance.now() - t0;
@@ -733,12 +733,12 @@ function handleComputeClimate(data) {
         let t0;
 
         if (!windResult) {
-            progress(0, 'Simulating wind patterns\u2026');
+            progress(0, '正在模拟风场\u2026');
             t0 = performance.now();
             windResult = computeWind(mesh, r_xyz, r_elevation_final, plateIsOcean, r_plate, noise);
             tWind = performance.now() - t0;
 
-            progress(30, 'Computing ocean currents\u2026');
+            progress(30, '正在计算洋流\u2026');
             t0 = performance.now();
             oceanResult = computeOceanCurrents(mesh, r_xyz, r_elevation_final, windResult);
             tOcean = performance.now() - t0;
@@ -747,17 +747,17 @@ function handleComputeClimate(data) {
             W.cachedOcean = oceanResult;
         }
 
-        progress(50, 'Computing precipitation\u2026');
+        progress(50, '正在计算降水\u2026');
         t0 = performance.now();
         const precipResult = computePrecipitation(mesh, r_xyz, r_elevation_final, windResult, oceanResult, precipitationOffset, landCoverage);
         const tPrecip = performance.now() - t0;
 
-        progress(70, 'Computing temperature\u2026');
+        progress(70, '正在计算温度\u2026');
         t0 = performance.now();
         const tempResult = computeTemperature(mesh, r_xyz, r_elevation_final, windResult, oceanResult, precipResult, temperatureOffset);
         const tTemp = performance.now() - t0;
 
-        progress(88, 'Classifying climates\u2026');
+        progress(88, '正在划分气候\u2026');
         t0 = performance.now();
         const koppen = classifyKoppen(mesh, r_elevation_final, tempResult, precipResult);
         const tKoppen = performance.now() - t0;
@@ -779,7 +779,7 @@ function handleComputeClimate(data) {
             koppen
         };
 
-        progress(95, 'Done');
+        progress(95, '完成');
 
         self.postMessage({
             type: 'climateDone',
@@ -917,7 +917,7 @@ function handleImportHeightmap(data) {
     try {
         const tTotal0 = performance.now();
 
-        progress(0, 'Building sphere mesh\u2026');
+        progress(0, '正在构建球面网格\u2026');
         const seed = overrideSeed ?? Math.floor(Math.random() * 16777216);
         const rng = makeRng(seed);
 
@@ -933,19 +933,19 @@ function handleImportHeightmap(data) {
         const t_xyz = generateTriangleCenters(mesh, r_xyz);
         timing.push({ stage: 'Triangle centers', ms: performance.now() - t0 });
 
-        progress(20, 'Sampling heightmap\u2026');
+        progress(20, '正在采样高度图\u2026');
         t0 = performance.now();
         const r_elevation = sampleHeightmap(mesh, r_xyz, grayscale, imageWidth, imageHeight);
         timing.push({ stage: 'Sample heightmap', ms: performance.now() - t0 });
 
         const prePostElev = new Float32Array(r_elevation);
 
-        progress(35, 'Processing terrain\u2026');
+        progress(35, '正在处理地形\u2026');
         t0 = performance.now();
         const { dl_erosionDelta, postTiming } = runPostProcessing(mesh, r_xyz, r_elevation, { smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, terrainWarp }, neighborDist, seed);
         timing.push({ stage: 'Terrain post-processing', ms: performance.now() - t0 });
 
-        progress(50, 'Deriving plates\u2026');
+        progress(50, '正在推导板块\u2026');
         t0 = performance.now();
         const { r_plate, plateSeeds, plateIsOcean, plateVec } = deriveSyntheticPlates(mesh, r_elevation);
         timing.push({ stage: 'Synthetic plates', ms: performance.now() - t0 });
@@ -981,7 +981,7 @@ function handleImportHeightmap(data) {
         if (!skipClimate) {
             const noise = new SimplexNoise(seed);
 
-            progress(60, 'Simulating wind patterns\u2026');
+            progress(60, '正在模拟风场\u2026');
             t0 = performance.now();
             windResult = computeWind(mesh, r_xyz, r_elevation, plateIsOcean, r_plate, noise);
             timing.push({ stage: 'Wind simulation', ms: performance.now() - t0 });
@@ -991,12 +991,12 @@ function handleImportHeightmap(data) {
             debugLayers.windSpeedWinter = windResult.r_wind_speed_winter;
             debugLayers.continentality = windResult.r_continentality;
 
-            progress(72, 'Computing ocean currents\u2026');
+            progress(72, '正在计算洋流\u2026');
             t0 = performance.now();
             oceanResult = computeOceanCurrents(mesh, r_xyz, r_elevation, windResult);
             timing.push({ stage: 'Ocean currents', ms: performance.now() - t0 });
 
-            progress(80, 'Computing precipitation\u2026');
+            progress(80, '正在计算降水\u2026');
             t0 = performance.now();
             precipResult = computePrecipitation(mesh, r_xyz, r_elevation, windResult, oceanResult, precipitationOffset, landCoverage);
             timing.push({ stage: 'Precipitation', ms: performance.now() - t0 });
@@ -1005,7 +1005,7 @@ function handleImportHeightmap(data) {
             debugLayers.rainShadowSummer = precipResult.r_rainshadow_summer;
             debugLayers.rainShadowWinter = precipResult.r_rainshadow_winter;
 
-            progress(88, 'Computing temperature\u2026');
+            progress(88, '正在计算温度\u2026');
             t0 = performance.now();
             tempResult = computeTemperature(mesh, r_xyz, r_elevation, windResult, oceanResult, precipResult, temperatureOffset);
             timing.push({ stage: 'Temperature', ms: performance.now() - t0 });
@@ -1018,7 +1018,7 @@ function handleImportHeightmap(data) {
             timing.push({ stage: 'Köppen classification', ms: performance.now() - t0 });
         }
 
-        progress(skipClimate ? 75 : 92, 'Computing triangle elevations\u2026');
+        progress(skipClimate ? 75 : 92, '正在计算三角面高程\u2026');
         t0 = performance.now();
         const t_elevation = computeTriangleElevations(mesh, r_elevation);
         timing.push({ stage: 'Triangle elevations', ms: performance.now() - t0 });

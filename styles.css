@@ -1,6 +1,29 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
-#canvas { display: block; }
+#canvas {
+    position: fixed; inset: 0;
+    display: block;
+    z-index: 1;
+    touch-action: none;
+}
+#canvas.empty {
+    opacity: 0;
+    pointer-events: none;
+}
+#initialPreview {
+    position: fixed; inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 68% 42%, rgba(60,120,220,0.10), transparent 30%),
+        linear-gradient(90deg, rgba(3,3,8,0.30), rgba(3,3,8,0.05) 45%, rgba(3,3,8,0.35)),
+        url('preview.png') center center / cover no-repeat,
+        #030308;
+    transition: opacity 0.35s ease;
+}
+#initialPreview.hidden {
+    opacity: 0;
+}
 
 /* ─── Top navigation bar ─── */
 #topNav {
@@ -25,6 +48,7 @@ body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, s
 
 #ui {
     position: absolute; top: 56px; left: 16px;
+    z-index: 20;
     background: rgba(8,8,28,0.88); backdrop-filter: blur(12px);
     padding: 20px; border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.08);
@@ -120,6 +144,45 @@ body { background: #000; overflow: hidden; font-family: 'Segoe UI', system-ui, s
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 input[type="range"] { width: 100%; accent-color: #48f; cursor: pointer; }
+
+.shape-seed-group {
+    padding: 8px 10px 10px;
+    background: rgba(68,136,255,0.08);
+    border: 1px solid rgba(68,136,255,0.14);
+    border-radius: 8px;
+}
+.shape-seed-row {
+    display: flex;
+    gap: 4px;
+}
+#shapeSeed {
+    flex: 1;
+    min-width: 0;
+    background: rgba(255,255,255,0.06);
+    color: #8bf;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 13px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    outline: none;
+}
+#shapeSeed:focus { border-color: #48f; }
+.shape-seed-row button {
+    background: rgba(255,255,255,0.06);
+    color: #9ab;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+}
+.shape-seed-row button:hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+}
 
 /* Slider thumb tooltip */
 .slider-tooltip {
@@ -237,6 +300,25 @@ button#generate.generating {
 .map-tab:hover { color: #bcd; }
 .map-tab.active {
     background: rgba(68,136,255,0.18); color: #8bf;
+}
+
+#mapViewReset {
+    width: 100%;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.06);
+    color: #9ab;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+#mapViewReset:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.18);
+    color: #fff;
 }
 
 /* Legend container */
@@ -369,6 +451,7 @@ button#generate.generating {
 .detail-warn.red { color: #d04030; }
 #topInfo {
     position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+    z-index: 20;
     font-size: 13px; color: #889;
     background: rgba(8,8,28,0.85); backdrop-filter: blur(8px);
     padding: 6px 14px; border-radius: 8px;
@@ -377,6 +460,7 @@ button#generate.generating {
 }
 #info {
     position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 20;
     font-size: 13px; color: #667; transition: color 0.4s ease;
     pointer-events: none;
 }
@@ -389,6 +473,7 @@ button#generate.generating {
 }
 #hoverInfo {
     position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+    z-index: 20;
     font-size: 14px; color: #cde; background: rgba(8,8,28,0.85);
     backdrop-filter: blur(8px); padding: 8px 16px; border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.08);
@@ -570,6 +655,15 @@ button#generate.generating {
     transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 #exportBtn:hover { border-color: rgba(255,255,255,0.25); color: #cde; background: rgba(255,255,255,0.04); }
+#exportBtn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+#exportBtn:disabled:hover {
+    border-color: rgba(255,255,255,0.12);
+    color: #9ab;
+    background: none;
+}
 
 /* Export overlay */
 #exportOverlay {
@@ -584,7 +678,9 @@ button#generate.generating {
 }
 #exportCard {
     position: relative;
-    max-width: 380px; width: 90%;
+    max-width: 440px; width: 90%;
+    max-height: min(86vh, 720px);
+    overflow-y: auto;
     background: rgba(8,8,28,0.94); backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px;
@@ -603,8 +699,54 @@ button#generate.generating {
     transition: color 0.2s;
 }
 #exportClose:hover { color: #fff; }
+.export-bundle-options {
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin-top: 14px;
+    padding-top: 14px;
+}
+.export-subtitle {
+    color: #9ac;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    margin-bottom: 7px;
+    text-transform: uppercase;
+}
+.export-note {
+    color: #789;
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+.export-debug-layer-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    max-height: 190px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.export-debug-layer-list.drag-selecting {
+    cursor: copy;
+    user-select: none;
+}
+.export-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #bcd;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.25;
+    min-width: 0;
+    user-select: none;
+}
+.export-check input {
+    flex: 0 0 auto;
+    accent-color: #48f;
+}
 .export-actions {
-    display: flex; justify-content: flex-end; gap: 10px;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px;
     margin-top: 18px;
 }
 
@@ -923,6 +1065,11 @@ button#generate.generating {
         color: #fff;
         box-shadow: 0 0 12px rgba(34,170,90,0.4);
     }
+    .edit-toggle:disabled {
+        opacity: 0.45;
+        cursor: default;
+        box-shadow: none;
+    }
 
     /* Refresh FAB — mirrors edit toggle on the left */
     .refresh-fab {
@@ -991,6 +1138,10 @@ button#generate.generating {
     /* Tutorial card — tighter padding */
     #tutorialCard { padding: 24px 20px 18px; }
     #whatsNewCard { padding: 24px 20px 18px; }
+    #exportCard { width: calc(100vw - 28px); padding: 24px 20px 18px; }
+    .export-debug-layer-list { grid-template-columns: 1fr; max-height: 170px; }
+    .export-actions { justify-content: stretch; }
+    .export-actions button { flex: 1 1 100%; }
 }
 
 /* ───── Mobile landscape ───── */
@@ -1003,6 +1154,7 @@ button#generate.generating {
     #ui { padding: 8px 14px 14px; }
     #tutorialCard { padding: 20px 16px 14px; }
     #whatsNewCard { padding: 20px 16px 14px; }
+    #exportCard { padding: 20px 16px 14px; }
     button#generate { padding: 12px; font-size: 15px; }
     .cg label { font-size: 14px; }
     .section summary { font-size: 13px; }

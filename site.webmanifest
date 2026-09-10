@@ -1,8 +1,8 @@
 {
     "name": "World Orogen",
     "short_name": "Orogen",
-    "description": "Procedural planet generator with tectonic plates, erosion, and climate simulation",
-    "start_url": "/",
+    "description": "具备板块构造、侵蚀与气候模拟的程序化星球生成器",
+    "start_url": ".",
     "display": "browser",
     "background_color": "#030308",
     "theme_color": "#0a0e17",

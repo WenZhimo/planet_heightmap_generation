@@ -1,5 +1,17 @@
-// Planet code encode/decode — packs seed + slider values into a compact base36 string.
+// Planet code encode/decode — packs seed + generation slider values into a compact base36 string.
 // Pure functions, no DOM access.
+
+// Legacy visual-map ids are kept only so old shared codes can still decode.
+const MAP_PROJECTION_IDS = [
+    'equirectangular',
+    'mercator',
+    'naturalEarth1',
+    'equalEarth',
+    'orthographic',
+    'azimuthalEqualArea',
+    'stereographic',
+    'gnomonic',
+];
 
 // Slider quantization tables
 const SLIDERS = [
@@ -19,12 +31,40 @@ const SLIDERS = [
     { min: -15,   step: 1,    count: 31  }, // 13: Temperature
     { min: -1,    step: 0.1,  count: 21  }, // 14: Precipitation
     { min: 0,     step: 0.01, count: 101 }, // 15: Land Coverage
+    { min: 0,     step: 1,    count: MAP_PROJECTION_IDS.length }, // 16: Legacy map projection
+    { min: -180,  step: 1,    count: 361 }, // 17: Legacy map center longitude
+    { min: -85,   step: 1,    count: 171 }, // 18: Legacy map center latitude
+    { min: -180,  step: 1,    count: 361 }, // 19: Legacy map rotation
+    { min: 0.5,   step: 0.05, count: 151 }, // 20: Legacy map zoom
 ];
 
-// Mixed-radix bases (right-to-left): lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, scIdx, rsIdx, teIdx, heIdx, glIdx, smIdx, nsIdx, cnIdx, pIdx, jIdx, nIdx, seed
+const PREV_MAP_SLIDERS = SLIDERS.map(s => ({ ...s }));
+PREV_MAP_SLIDERS[16] = { min: 0,    step: 1, count: 6  };
+PREV_MAP_SLIDERS[17] = { min: -180, step: 5, count: 73 };
+PREV_MAP_SLIDERS[18] = { min: -85,  step: 5, count: 35 };
+
+const PARTIAL_EXTENDED_MAP_SLIDERS = SLIDERS.map(s => ({ ...s }));
+PARTIAL_EXTENDED_MAP_SLIDERS[17] = { min: -180, step: 5,    count: 73  };
+PARTIAL_EXTENDED_MAP_SLIDERS[18] = { min: -85,  step: 5,    count: 35  };
+PARTIAL_EXTENDED_MAP_SLIDERS[19] = { min: -180, step: 5,    count: 73  };
+PARTIAL_EXTENDED_MAP_SLIDERS[20] = { min: 0.5,  step: 0.05, count: 151 };
+
+// Current mixed-radix bases (right-to-left): lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, rsIdx, teIdx, heIdx, glIdx, smIdx, nsIdx, cnIdx, pIdx, jIdx, nIdx, seed.
+// The historical 22-char generation format below included a soil-creep slot; current codes omit it because it is no longer user-configurable.
+const CURRENT_RADICES = [101, 21, 31, 21, 21, 21, 21, 21, 21, 21, 51, 10, 117, 21, 2556];
+// Historical 22-char generation/map formats with a retired soil-creep slot.
 const RADICES = [101, 21, 31, 21, 21, 21, 21, 21, 21, 21, 21, 51, 10, 117, 21, 2556];
+// Previous map format adds map-center latitude, map-center longitude, and projection before the pre-map fields.
+const PREV_MAP_RADICES = [35, 73, 6, ...RADICES];
+const PARTIAL_EXTENDED_MAP_RADICES = [151, 73, 35, 73, MAP_PROJECTION_IDS.length, ...RADICES];
+// Retired visual-map format added zoom, roll, center, and projection before the generation fields.
+const EXTENDED_MAP_RADICES = [151, 361, 171, 361, MAP_PROJECTION_IDS.length, ...RADICES];
 const SEED_MAX = 16777216; // 2^24
-const BASE_LEN = 22; // base code length (no toggles)
+const CURRENT_LEN = 20; // current generation-only code length (no toggles)
+const EXTENDED_MAP_LEN = 29; // retired extended visual-map format
+const PARTIAL_EXTENDED_MAP_LEN = 27; // short-lived extended-map draft format
+const PREV_MAP_LEN = 24; // previous base code length with projection + center only (no toggles)
+const BASE_LEN = 22; // previous generation-only base code length with retired soil-creep slot
 const PREV5_LEN = 21; // previous 21-char codes (before land coverage)
 const PREV4_LEN = 18; // previous 18-char codes (before continent variety/temp/precip)
 const PREV3_LEN = 17; // previous 17-char codes (before terrain warp)
@@ -133,6 +173,16 @@ const DECODE_FORMATS = {
         ],
         defaults: { landCoverage: 0.3 }
     },
+    [CURRENT_LEN]: {
+        radices: CURRENT_RADICES,
+        fields: [
+            ['landCoverage', 15], ['precipitationOffset', 14], ['temperatureOffset', 13],
+            ['continentSizeVariety', 12], ['terrainWarp', 11], ['ridgeSharpening', 9],
+            ['thermalErosion', 8], ['hydraulicErosion', 7], ['glacialErosion', 6],
+            ['smoothing', 5], ['roughness', 4], ['numContinents', 3], ['P', 2], ['jitter', 1], ['N', 0],
+        ],
+        defaults: { soilCreep: 0.75 }
+    },
     [BASE_LEN]: {
         radices: RADICES,
         fields: [
@@ -143,22 +193,67 @@ const DECODE_FORMATS = {
         ],
         defaults: {}
     },
+    [PREV_MAP_LEN]: {
+        radices: PREV_MAP_RADICES,
+        sliders: PREV_MAP_SLIDERS,
+        fields: [
+            ['mapCenterLat', 18], ['mapCenterLon', 17], ['mapProjectionIndex', 16],
+            ['landCoverage', 15], ['precipitationOffset', 14], ['temperatureOffset', 13],
+            ['continentSizeVariety', 12], ['terrainWarp', 11], ['soilCreep', 10], ['ridgeSharpening', 9],
+            ['thermalErosion', 8], ['hydraulicErosion', 7], ['glacialErosion', 6],
+            ['smoothing', 5], ['roughness', 4], ['numContinents', 3], ['P', 2], ['jitter', 1], ['N', 0],
+        ],
+        defaults: {}
+    },
+    [PARTIAL_EXTENDED_MAP_LEN]: {
+        radices: PARTIAL_EXTENDED_MAP_RADICES,
+        sliders: PARTIAL_EXTENDED_MAP_SLIDERS,
+        fields: [
+            ['mapZoom', 20], ['mapRotation', 19], ['mapCenterLat', 18], ['mapCenterLon', 17],
+            ['mapProjectionIndex', 16], ['landCoverage', 15], ['precipitationOffset', 14],
+            ['temperatureOffset', 13], ['continentSizeVariety', 12], ['terrainWarp', 11],
+            ['soilCreep', 10], ['ridgeSharpening', 9], ['thermalErosion', 8], ['hydraulicErosion', 7],
+            ['glacialErosion', 6], ['smoothing', 5], ['roughness', 4],
+            ['numContinents', 3], ['P', 2], ['jitter', 1], ['N', 0],
+        ],
+        defaults: {}
+    },
+    [EXTENDED_MAP_LEN]: {
+        radices: EXTENDED_MAP_RADICES,
+        fields: [
+            ['mapZoom', 20], ['mapRotation', 19], ['mapCenterLat', 18], ['mapCenterLon', 17],
+            ['mapProjectionIndex', 16], ['landCoverage', 15], ['precipitationOffset', 14],
+            ['temperatureOffset', 13], ['continentSizeVariety', 12], ['terrainWarp', 11],
+            ['soilCreep', 10], ['ridgeSharpening', 9], ['thermalErosion', 8], ['hydraulicErosion', 7],
+            ['glacialErosion', 6], ['smoothing', 5], ['roughness', 4],
+            ['numContinents', 3], ['P', 2], ['jitter', 1], ['N', 0],
+        ],
+        defaults: {}
+    },
 };
 
 /** Generic mixed-radix decode: extract fields LSB-first, validate, convert, apply defaults. */
 function decodeFormat(packed, config, toggleStr) {
     const { radices, fields, defaults } = config;
+    const sliders = config.sliders || SLIDERS;
     const result = {};
     for (let i = 0; i < radices.length; i++) {
         const [name, si] = fields[i];
         const idx = Number(packed % BigInt(radices[i]));
         packed = packed / BigInt(radices[i]);
-        if (idx >= SLIDERS[si].count) return null;
-        result[name] = fromIndex(idx, SLIDERS[si]);
+        if (idx >= sliders[si].count) return null;
+        result[name] = fromIndex(idx, sliders[si]);
     }
     result.seed = Number(packed);
     if (result.seed < 0 || result.seed >= SEED_MAX) return null;
     Object.assign(result, defaults);
+    const projectionIndex = Number.isInteger(result.mapProjectionIndex) ? result.mapProjectionIndex : 0;
+    result.mapProjection = MAP_PROJECTION_IDS[projectionIndex] || MAP_PROJECTION_IDS[0];
+    delete result.mapProjectionIndex;
+    if (!Number.isFinite(result.mapCenterLon)) result.mapCenterLon = 0;
+    if (!Number.isFinite(result.mapCenterLat)) result.mapCenterLat = 0;
+    if (!Number.isFinite(result.mapRotation)) result.mapRotation = 0;
+    if (!Number.isFinite(result.mapZoom)) result.mapZoom = 1;
 
     const toggledIndices = [];
     if (toggleStr) {
@@ -186,15 +281,14 @@ function decodeFormat(packed, config, toggleStr) {
  * @param {number} hydraulicErosion - Hydraulic Erosion (0–1, step 0.05)
  * @param {number} thermalErosion - Thermal Erosion (0–1, step 0.05)
  * @param {number} ridgeSharpening - Ridge Sharpening (0–1, step 0.05)
- * @param {number} soilCreep - Soil Creep (0–1, step 0.05)
  * @param {number} continentSizeVariety - Continent Size Variety (0–1, step 0.05)
  * @param {number} temperatureOffset - Temperature offset (-15–15, step 1)
  * @param {number} precipitationOffset - Precipitation offset (-1–1, step 0.1)
- * @param {number} landCoverage - Land Coverage (0–1, step 0.05)
+ * @param {number} landCoverage - Land Coverage (0–1, step 0.01)
  * @param {number[]} [toggledIndices=[]] - Sorted array of toggled plate indices
- * @returns {string} base36 code (22 chars without edits, 22 + '-' + 2*k with k edits)
+ * @returns {string} base36 code (20 chars without edits, 20 + '-' + 2*k with k edits)
  */
-export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, soilCreep, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage, toggledIndices = []) {
+export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, terrainWarp, smoothing, glacialErosion, hydraulicErosion, thermalErosion, ridgeSharpening, continentSizeVariety, temperatureOffset, precipitationOffset, landCoverage, toggledIndices = []) {
     const nIdx  = toIndex(N, SLIDERS[0]);
     const jIdx  = toIndex(jitter, SLIDERS[1]);
     const pIdx  = toIndex(P, SLIDERS[2]);
@@ -205,7 +299,6 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
     const heIdx = toIndex(hydraulicErosion, SLIDERS[7]);
     const teIdx = toIndex(thermalErosion, SLIDERS[8]);
     const rsIdx = toIndex(ridgeSharpening, SLIDERS[9]);
-    const scIdx = toIndex(soilCreep, SLIDERS[10]);
     const twIdx = toIndex(terrainWarp, SLIDERS[11]);
     const csvIdx = toIndex(continentSizeVariety, SLIDERS[12]);
     const tmpIdx = toIndex(temperatureOffset, SLIDERS[13]);
@@ -214,24 +307,23 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
 
     // Mixed-radix packing (least-significant first: lcIdx, prcIdx, tmpIdx, csvIdx, twIdx, ...)
     let packed = BigInt(seed);
-    packed = packed * BigInt(RADICES[15]) + BigInt(nIdx);    // * 2556
-    packed = packed * BigInt(RADICES[14]) + BigInt(jIdx);    // * 21
-    packed = packed * BigInt(RADICES[13]) + BigInt(pIdx);    // * 117
-    packed = packed * BigInt(RADICES[12]) + BigInt(cnIdx);   // * 10
-    packed = packed * BigInt(RADICES[11]) + BigInt(nsIdx);   // * 51
-    packed = packed * BigInt(RADICES[10]) + BigInt(smIdx);   // * 21
-    packed = packed * BigInt(RADICES[9])  + BigInt(glIdx);   // * 21
-    packed = packed * BigInt(RADICES[8])  + BigInt(heIdx);   // * 21
-    packed = packed * BigInt(RADICES[7])  + BigInt(teIdx);   // * 21
-    packed = packed * BigInt(RADICES[6])  + BigInt(rsIdx);   // * 21
-    packed = packed * BigInt(RADICES[5])  + BigInt(scIdx);   // * 21
-    packed = packed * BigInt(RADICES[4])  + BigInt(twIdx);   // * 21
-    packed = packed * BigInt(RADICES[3])  + BigInt(csvIdx);  // * 21
-    packed = packed * BigInt(RADICES[2])  + BigInt(tmpIdx);  // * 31
-    packed = packed * BigInt(RADICES[1])  + BigInt(prcIdx);  // * 21
-    packed = packed * BigInt(RADICES[0])  + BigInt(lcIdx);   // * 21
+    packed = packed * BigInt(CURRENT_RADICES[14]) + BigInt(nIdx);   // * 2556
+    packed = packed * BigInt(CURRENT_RADICES[13]) + BigInt(jIdx);   // * 21
+    packed = packed * BigInt(CURRENT_RADICES[12]) + BigInt(pIdx);   // * 117
+    packed = packed * BigInt(CURRENT_RADICES[11]) + BigInt(cnIdx);  // * 10
+    packed = packed * BigInt(CURRENT_RADICES[10]) + BigInt(nsIdx);  // * 51
+    packed = packed * BigInt(CURRENT_RADICES[9])  + BigInt(smIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[8])  + BigInt(glIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[7])  + BigInt(heIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[6])  + BigInt(teIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[5])  + BigInt(rsIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[4])  + BigInt(twIdx);  // * 21
+    packed = packed * BigInt(CURRENT_RADICES[3])  + BigInt(csvIdx); // * 21
+    packed = packed * BigInt(CURRENT_RADICES[2])  + BigInt(tmpIdx); // * 31
+    packed = packed * BigInt(CURRENT_RADICES[1])  + BigInt(prcIdx); // * 21
+    packed = packed * BigInt(CURRENT_RADICES[0])  + BigInt(lcIdx);  // * 101
 
-    let code = packed.toString(36).padStart(BASE_LEN, '0');
+    let code = packed.toString(36).padStart(CURRENT_LEN, '0');
 
     // Append toggled plate indices: "-" + 2-char base36 per index
     if (toggledIndices.length > 0) {
@@ -245,9 +337,9 @@ export function encodePlanetCode(seed, N, jitter, P, numContinents, roughness, t
 
 /**
  * Decode a base36 planet code back into planet parameters.
- * Supports 22-char (current), 21-char (prev5), 18-char (prev4), 17-char (prev3), 16-char (prev2), 14-char (previous-gen), and 13-char (legacy) codes.
- * @param {string} code - base36 code (13, 14, 16, 17, 18, 21, or 22 chars, optionally followed by "-" + toggle indices)
- * @returns {{ seed: number, N: number, jitter: number, P: number, numContinents: number, roughness: number, terrainWarp: number, smoothing: number, glacialErosion: number, hydraulicErosion: number, thermalErosion: number, ridgeSharpening: number, soilCreep: number, continentSizeVariety: number, temperatureOffset: number, precipitationOffset: number, landCoverage: number, toggledIndices: number[] } | null}
+ * Supports 20-char (current), plus retired 29-char/27-char/24-char visual-map formats and older 22/21/18/17/16/14/13-char generation formats.
+ * @param {string} code - base36 code (13, 14, 16, 17, 18, 20, 21, 22, 24, 27, or 29 chars, optionally followed by "-" + toggle indices)
+ * @returns {{ seed: number, N: number, jitter: number, P: number, numContinents: number, roughness: number, terrainWarp: number, smoothing: number, glacialErosion: number, hydraulicErosion: number, thermalErosion: number, ridgeSharpening: number, soilCreep: number, continentSizeVariety: number, temperatureOffset: number, precipitationOffset: number, landCoverage: number, mapProjection: string, mapCenterLon: number, mapCenterLat: number, mapRotation: number, mapZoom: number, toggledIndices: number[] } | null} map fields are legacy decode-only compatibility values and are not encoded by current codes.
  */
 export function decodePlanetCode(code) {
     if (typeof code !== 'string') return null;
