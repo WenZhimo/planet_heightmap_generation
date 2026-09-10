@@ -140,12 +140,12 @@ npx serve .
 
 ### 扩展投影清单
 
-已查询 `d3-geo-projection@4.0.0` 源码导出，并接入其中 97 个可直接创建、带官方预设，或已提供默认控制点的投影工厂。`Raw`、`geoInterrupt`、`geoPolyhedral`、`geoProject`、`geoQuantize`、`geoQuincuncial`、`geoStitch` 属于底层 raw/helper/generator，不作为独立菜单项暴露；`geoModifiedStereographic` 需要外部系数，使用扩展库提供的 Alaska、GS48、GS50、Lee、Miller 预设。
+已查询 `d3-geo-projection@4.0.0` 源码导出，并接入其中 98 个可直接创建、带官方预设，或已提供默认参数的投影工厂。`Raw`、`geoInterrupt`、`geoPolyhedral`、`geoProject`、`geoQuantize`、`geoQuincuncial`、`geoStitch` 属于底层 raw/helper/generator，不作为独立菜单项暴露；`geoModifiedStereographic` 使用扩展库源码中的 Miller 系数作为默认实例，同时保留 Alaska、GS48、GS50、Lee、Miller 官方预设。
 
 - `geoAiry`, `geoAitoff`, `geoArmadillo`, `geoAugust`, `geoBaker`, `geoBerghaus`, `geoBertin1953`, `geoBoggs`, `geoBonne`, `geoBottomley`, `geoBromley`, `geoChamberlin`, `geoChamberlinAfrica`, `geoCollignon`, `geoCraig`, `geoCraster`
 - `geoCylindricalEqualArea`, `geoCylindricalStereographic`, `geoEckert1`, `geoEckert2`, `geoEckert3`, `geoEckert4`, `geoEckert5`, `geoEckert6`, `geoEisenlohr`, `geoFahey`, `geoFoucaut`, `geoFoucautSinusoidal`, `geoGilbert`, `geoGingery`, `geoGinzburg4`, `geoGinzburg5`
 - `geoGinzburg6`, `geoGinzburg8`, `geoGinzburg9`, `geoGringorten`, `geoGringortenQuincuncial`, `geoGuyou`, `geoHammer`, `geoHammerRetroazimuthal`, `geoHealpix`, `geoHill`, `geoHomolosine`, `geoHufnagel`, `geoHyperelliptical`, `geoInterruptedBoggs`, `geoInterruptedHomolosine`, `geoInterruptedMollweide`
-- `geoInterruptedMollweideHemispheres`, `geoInterruptedQuarticAuthalic`, `geoInterruptedSinuMollweide`, `geoInterruptedSinusoidal`, `geoKavrayskiy7`, `geoLagrange`, `geoLarrivee`, `geoLaskowski`, `geoLittrow`, `geoLoximuthal`, `geoMiller`, `geoModifiedStereographicAlaska`, `geoModifiedStereographicGs48`, `geoModifiedStereographicGs50`, `geoModifiedStereographicLee`, `geoModifiedStereographicMiller`
+- `geoInterruptedMollweideHemispheres`, `geoInterruptedQuarticAuthalic`, `geoInterruptedSinuMollweide`, `geoInterruptedSinusoidal`, `geoKavrayskiy7`, `geoLagrange`, `geoLarrivee`, `geoLaskowski`, `geoLittrow`, `geoLoximuthal`, `geoMiller`, `geoModifiedStereographic`, `geoModifiedStereographicAlaska`, `geoModifiedStereographicGs48`, `geoModifiedStereographicGs50`, `geoModifiedStereographicLee`, `geoModifiedStereographicMiller`
 - `geoMollweide`, `geoMtFlatPolarParabolic`, `geoMtFlatPolarQuartic`, `geoMtFlatPolarSinusoidal`, `geoNaturalEarth2`, `geoNellHammer`, `geoNicolosi`, `geoPatterson`, `geoPeirceQuincuncial`, `geoPolyconic`, `geoPolyhedralButterfly`, `geoPolyhedralCollignon`, `geoPolyhedralWaterman`, `geoRectangularPolyconic`, `geoRobinson`, `geoSatellite`
 - `geoSinuMollweide`, `geoSinusoidal`, `geoTimes`, `geoTwoPointAzimuthal`, `geoTwoPointAzimuthalUsa`, `geoTwoPointEquidistant`, `geoTwoPointEquidistantUsa`, `geoVanDerGrinten`, `geoVanDerGrinten2`, `geoVanDerGrinten3`, `geoVanDerGrinten4`, `geoWagner`, `geoWagner4`, `geoWagner6`, `geoWagner7`, `geoWiechel`
 - `geoWinkel3`

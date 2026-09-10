@@ -21,6 +21,8 @@ const EQ_A2 = -0.081106;
 const EQ_A3 = 0.000893;
 const EQ_A4 = 0.003796;
 const EQ_M = Math.sqrt(3) / 2;
+const MODIFIED_STEREOGRAPHIC_DEFAULT_COEFFICIENTS = [[0.9245, 0], [0, 0], [0.01943, 0]];
+const MODIFIED_STEREOGRAPHIC_DEFAULT_ROTATE = [-20, -18];
 const D3_BOUNDS_STEP = 10;
 const D3_BOUNDS_LIMIT = 1e5;
 
@@ -113,6 +115,7 @@ const EXTENDED_PROJECTION_DEFS = [
     { id: 'littrow', label: 'Littrow', group: GROUP_EXTENDED_SPECIAL, factory: 'geoLittrow' },
     { id: 'loximuthal', label: 'Loximuthal', group: GROUP_EXTENDED_WORLD, factory: 'geoLoximuthal', wrap: true },
     { id: 'miller', label: 'Miller Cylindrical', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoMiller', wrap: true },
+    { id: 'modifiedStereographic', label: 'Modified Stereographic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographic', args: [MODIFIED_STEREOGRAPHIC_DEFAULT_COEFFICIENTS, MODIFIED_STEREOGRAPHIC_DEFAULT_ROTATE] },
     { id: 'modifiedStereographicAlaska', label: 'Modified Stereographic Alaska', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicAlaska' },
     { id: 'modifiedStereographicGs48', label: 'Modified Stereographic GS48', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs48' },
     { id: 'modifiedStereographicGs50', label: 'Modified Stereographic GS50', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs50' },
