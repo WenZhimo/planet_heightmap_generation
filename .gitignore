@@ -1,0 +1,10 @@
+.claude/settings.local.json
+node_modules/
+__pycache__/
+package.json
+package-lock.json
+tuning/screenshots/
+tuning/results/*.json
+tuning/results/climate/
+tuning/climate/data/
+tuning/climate/maps/
