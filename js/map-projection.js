@@ -1,3 +1,5 @@
+import * as d3Geo from 'd3-geo';
+import * as d3GeoProjection from 'd3-geo-projection';
 import { state } from './state.js';
 
 const PI = Math.PI;
@@ -19,19 +21,149 @@ const EQ_A2 = -0.081106;
 const EQ_A3 = 0.000893;
 const EQ_A4 = 0.003796;
 const EQ_M = Math.sqrt(3) / 2;
+const MODIFIED_STEREOGRAPHIC_DEFAULT_COEFFICIENTS = [[0.9245, 0], [0, 0], [0.01943, 0]];
+const MODIFIED_STEREOGRAPHIC_DEFAULT_ROTATE = [-20, -18];
+const D3_BOUNDS_STEP = 10;
+const D3_BOUNDS_LIMIT = 1e5;
 
-export const MAP_PROJECTIONS = [
-    { id: 'equirectangular', label: '等距柱状' },
-    { id: 'mercator', label: '墨卡托' },
-    { id: 'naturalEarth1', label: '自然地球' },
-    { id: 'equalEarth', label: 'Equal Earth 等面积' },
-    { id: 'orthographic', label: '正射半球' },
-    { id: 'azimuthalEqualArea', label: '方位等面积' },
-    { id: 'stereographic', label: '球极平射' },
-    { id: 'gnomonic', label: '心射投影' },
+const GROUP_CYLINDRICAL = '圆柱投影 / Cylindrical';
+const GROUP_AZIMUTHAL = '方位投影 / Azimuthal';
+const GROUP_CONIC = '圆锥投影 / Conic';
+const GROUP_COMMON = '常用世界地图';
+const GROUP_EXTENDED_WORLD = '扩展库：世界投影 / d3-geo-projection';
+const GROUP_EXTENDED_CYLINDRICAL = '扩展库：圆柱与伪圆柱';
+const GROUP_EXTENDED_INTERRUPTED = '扩展库：间断投影';
+const GROUP_EXTENDED_POLYHEDRAL = '扩展库：多面体与方形投影';
+const GROUP_EXTENDED_SPECIAL = '扩展库：特殊与区域投影';
+
+const d3ProjectionMetricsCache = new Map();
+
+const CORE_PROJECTION_DEFS = [
+    { id: 'equirectangular', label: '等距圆柱 / Plate Carrée', group: GROUP_CYLINDRICAL, custom: true, wrap: true },
+    { id: 'mercator', label: '墨卡托', group: GROUP_CYLINDRICAL, custom: true, wrap: true },
+    { id: 'transverseMercator', label: '横轴墨卡托', group: GROUP_CYLINDRICAL, d3Factory: () => makeD3Projection(d3Geo.geoTransverseMercator()), wrap: true },
+    { id: 'azimuthalEqualArea', label: 'Lambert 等面积方位', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'azimuthalEquidistant', label: '等距方位', group: GROUP_AZIMUTHAL, d3Factory: () => makeD3Projection(d3Geo.geoAzimuthalEquidistant()), maxRawEdge: 0.65 },
+    { id: 'gnomonic', label: '心射投影', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'orthographic', label: '正射投影', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'stereographic', label: '立体投影 / 球极平射', group: GROUP_AZIMUTHAL, custom: true },
+    { id: 'albers', label: 'Albers 等面积圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoAlbers(), { parallels: [20, 50] }), wrap: true },
+    { id: 'conicConformal', label: 'Lambert 正形圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicConformal(), { parallels: [20, 50] }), wrap: true },
+    { id: 'conicEqualArea', label: '等面积圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicEqualArea(), { parallels: [20, 50] }), wrap: true },
+    { id: 'conicEquidistant', label: '等距圆锥', group: GROUP_CONIC, d3Factory: () => makeD3Projection(d3Geo.geoConicEquidistant(), { parallels: [20, 50] }), wrap: true },
+    { id: 'naturalEarth1', label: '自然地球', group: GROUP_COMMON, custom: true, wrap: true },
+    { id: 'equalEarth', label: 'Equal Earth 等面积', group: GROUP_COMMON, custom: true, wrap: true },
 ];
 
-const PROJECTION_IDS = new Set(MAP_PROJECTIONS.map(p => p.id));
+const EXTENDED_PROJECTION_DEFS = [
+    { id: 'airy', label: 'Airy', group: GROUP_EXTENDED_SPECIAL, factory: 'geoAiry' },
+    { id: 'aitoff', label: 'Aitoff', group: GROUP_EXTENDED_WORLD, factory: 'geoAitoff', wrap: true },
+    { id: 'armadillo', label: 'Armadillo', group: GROUP_EXTENDED_SPECIAL, factory: 'geoArmadillo' },
+    { id: 'august', label: 'August Epicycloidal', group: GROUP_EXTENDED_WORLD, factory: 'geoAugust', wrap: true },
+    { id: 'baker', label: 'Baker Dinomic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoBaker', wrap: true },
+    { id: 'berghaus', label: 'Berghaus Star', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBerghaus' },
+    { id: 'bertin1953', label: 'Bertin 1953', group: GROUP_EXTENDED_WORLD, factory: 'geoBertin1953', wrap: true },
+    { id: 'boggs', label: 'Boggs Eumorphic', group: GROUP_EXTENDED_WORLD, factory: 'geoBoggs', wrap: true },
+    { id: 'bonne', label: 'Bonne', group: GROUP_EXTENDED_SPECIAL, factory: 'geoBonne', wrap: true },
+    { id: 'bottomley', label: 'Bottomley', group: GROUP_EXTENDED_WORLD, factory: 'geoBottomley', wrap: true },
+    { id: 'bromley', label: 'Bromley', group: GROUP_EXTENDED_WORLD, factory: 'geoBromley', wrap: true },
+    { id: 'chamberlin', label: 'Chamberlin Trimetric', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlin', args: [[-120, 30], [0, -35], [120, 30]] },
+    { id: 'chamberlinAfrica', label: 'Chamberlin Africa', group: GROUP_EXTENDED_SPECIAL, factory: 'geoChamberlinAfrica' },
+    { id: 'collignon', label: 'Collignon', group: GROUP_EXTENDED_WORLD, factory: 'geoCollignon', wrap: true },
+    { id: 'craig', label: 'Craig Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoCraig' },
+    { id: 'craster', label: 'Craster Parabolic', group: GROUP_EXTENDED_WORLD, factory: 'geoCraster', wrap: true },
+    { id: 'cylindricalEqualArea', label: 'Cylindrical Equal-Area', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalEqualArea', wrap: true },
+    { id: 'cylindricalStereographic', label: 'Cylindrical Stereographic', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoCylindricalStereographic', wrap: true },
+    { id: 'eckert1', label: 'Eckert I', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert1', wrap: true },
+    { id: 'eckert2', label: 'Eckert II', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert2', wrap: true },
+    { id: 'eckert3', label: 'Eckert III', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert3', wrap: true },
+    { id: 'eckert4', label: 'Eckert IV', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert4', wrap: true },
+    { id: 'eckert5', label: 'Eckert V', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert5', wrap: true },
+    { id: 'eckert6', label: 'Eckert VI', group: GROUP_EXTENDED_WORLD, factory: 'geoEckert6', wrap: true },
+    { id: 'eisenlohr', label: 'Eisenlohr', group: GROUP_EXTENDED_WORLD, factory: 'geoEisenlohr', wrap: true },
+    { id: 'fahey', label: 'Fahey', group: GROUP_EXTENDED_WORLD, factory: 'geoFahey', wrap: true },
+    { id: 'foucaut', label: 'Foucaut', group: GROUP_EXTENDED_WORLD, factory: 'geoFoucaut', wrap: true },
+    { id: 'foucautSinusoidal', label: 'Foucaut Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoFoucautSinusoidal', wrap: true },
+    { id: 'gilbert', label: 'Gilbert', group: GROUP_EXTENDED_SPECIAL, factory: 'geoGilbert' },
+    { id: 'gingery', label: 'Gingery', group: GROUP_EXTENDED_SPECIAL, factory: 'geoGingery' },
+    { id: 'ginzburg4', label: 'Ginzburg IV', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg4', wrap: true },
+    { id: 'ginzburg5', label: 'Ginzburg V', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg5', wrap: true },
+    { id: 'ginzburg6', label: 'Ginzburg VI', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg6', wrap: true },
+    { id: 'ginzburg8', label: 'Ginzburg VIII', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg8', wrap: true },
+    { id: 'ginzburg9', label: 'Ginzburg IX', group: GROUP_EXTENDED_WORLD, factory: 'geoGinzburg9', wrap: true },
+    { id: 'gringorten', label: 'Gringorten', group: GROUP_EXTENDED_WORLD, factory: 'geoGringorten', wrap: true },
+    { id: 'gringortenQuincuncial', label: 'Gringorten Quincuncial', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoGringortenQuincuncial' },
+    { id: 'guyou', label: 'Guyou', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoGuyou' },
+    { id: 'hammer', label: 'Hammer', group: GROUP_EXTENDED_WORLD, factory: 'geoHammer', wrap: true },
+    { id: 'hammerRetroazimuthal', label: 'Hammer Retroazimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoHammerRetroazimuthal' },
+    { id: 'healpix', label: 'HEALPix', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoHealpix' },
+    { id: 'hill', label: 'Hill Eucyclic', group: GROUP_EXTENDED_WORLD, factory: 'geoHill', wrap: true },
+    { id: 'homolosine', label: 'Homolosine', group: GROUP_EXTENDED_WORLD, factory: 'geoHomolosine', wrap: true },
+    { id: 'hufnagel', label: 'Hufnagel', group: GROUP_EXTENDED_WORLD, factory: 'geoHufnagel', wrap: true },
+    { id: 'hyperelliptical', label: 'Hyperelliptical', group: GROUP_EXTENDED_WORLD, factory: 'geoHyperelliptical', wrap: true },
+    { id: 'interruptedBoggs', label: 'Interrupted Boggs', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedBoggs' },
+    { id: 'interruptedHomolosine', label: 'Interrupted Homolosine', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedHomolosine' },
+    { id: 'interruptedMollweide', label: 'Interrupted Mollweide', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedMollweide' },
+    { id: 'interruptedMollweideHemispheres', label: 'Interrupted Mollweide Hemispheres', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedMollweideHemispheres' },
+    { id: 'interruptedQuarticAuthalic', label: 'Interrupted Quartic Authalic', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedQuarticAuthalic' },
+    { id: 'interruptedSinuMollweide', label: 'Interrupted Sinu-Mollweide', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedSinuMollweide' },
+    { id: 'interruptedSinusoidal', label: 'Interrupted Sinusoidal', group: GROUP_EXTENDED_INTERRUPTED, factory: 'geoInterruptedSinusoidal' },
+    { id: 'kavrayskiy7', label: 'Kavrayskiy VII', group: GROUP_EXTENDED_WORLD, factory: 'geoKavrayskiy7', wrap: true },
+    { id: 'lagrange', label: 'Lagrange', group: GROUP_EXTENDED_WORLD, factory: 'geoLagrange', wrap: true },
+    { id: 'larrivee', label: "Larrivée", group: GROUP_EXTENDED_WORLD, factory: 'geoLarrivee', wrap: true },
+    { id: 'laskowski', label: 'Laskowski', group: GROUP_EXTENDED_WORLD, factory: 'geoLaskowski', wrap: true },
+    { id: 'littrow', label: 'Littrow', group: GROUP_EXTENDED_SPECIAL, factory: 'geoLittrow' },
+    { id: 'loximuthal', label: 'Loximuthal', group: GROUP_EXTENDED_WORLD, factory: 'geoLoximuthal', wrap: true },
+    { id: 'miller', label: 'Miller Cylindrical', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoMiller', wrap: true },
+    { id: 'modifiedStereographic', label: 'Modified Stereographic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographic', args: [MODIFIED_STEREOGRAPHIC_DEFAULT_COEFFICIENTS, MODIFIED_STEREOGRAPHIC_DEFAULT_ROTATE] },
+    { id: 'modifiedStereographicAlaska', label: 'Modified Stereographic Alaska', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicAlaska' },
+    { id: 'modifiedStereographicGs48', label: 'Modified Stereographic GS48', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs48' },
+    { id: 'modifiedStereographicGs50', label: 'Modified Stereographic GS50', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicGs50' },
+    { id: 'modifiedStereographicLee', label: 'Modified Stereographic Lee', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicLee' },
+    { id: 'modifiedStereographicMiller', label: 'Modified Stereographic Miller', group: GROUP_EXTENDED_SPECIAL, factory: 'geoModifiedStereographicMiller' },
+    { id: 'mollweide', label: 'Mollweide', group: GROUP_EXTENDED_WORLD, factory: 'geoMollweide', wrap: true },
+    { id: 'mtFlatPolarParabolic', label: 'McBryde-Thomas Flat-Polar Parabolic', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarParabolic', wrap: true },
+    { id: 'mtFlatPolarQuartic', label: 'McBryde-Thomas Flat-Polar Quartic', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarQuartic', wrap: true },
+    { id: 'mtFlatPolarSinusoidal', label: 'McBryde-Thomas Flat-Polar Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoMtFlatPolarSinusoidal', wrap: true },
+    { id: 'naturalEarth2', label: 'Natural Earth II', group: GROUP_EXTENDED_WORLD, factory: 'geoNaturalEarth2', wrap: true },
+    { id: 'nellHammer', label: 'Nell-Hammer', group: GROUP_EXTENDED_WORLD, factory: 'geoNellHammer', wrap: true },
+    { id: 'nicolosi', label: 'Nicolosi Globular', group: GROUP_EXTENDED_WORLD, factory: 'geoNicolosi', wrap: true },
+    { id: 'patterson', label: 'Patterson Cylindrical', group: GROUP_EXTENDED_CYLINDRICAL, factory: 'geoPatterson', wrap: true },
+    { id: 'peirceQuincuncial', label: 'Peirce Quincuncial', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPeirceQuincuncial' },
+    { id: 'polyconic', label: 'Polyconic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoPolyconic', wrap: true },
+    { id: 'polyhedralButterfly', label: 'Polyhedral Butterfly', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralButterfly' },
+    { id: 'polyhedralCollignon', label: 'Polyhedral Collignon', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralCollignon' },
+    { id: 'polyhedralWaterman', label: 'Polyhedral Waterman', group: GROUP_EXTENDED_POLYHEDRAL, factory: 'geoPolyhedralWaterman' },
+    { id: 'rectangularPolyconic', label: 'Rectangular Polyconic', group: GROUP_EXTENDED_SPECIAL, factory: 'geoRectangularPolyconic', wrap: true },
+    { id: 'robinson', label: 'Robinson', group: GROUP_EXTENDED_WORLD, factory: 'geoRobinson', wrap: true },
+    { id: 'satellite', label: 'Satellite', group: GROUP_EXTENDED_SPECIAL, factory: 'geoSatellite' },
+    { id: 'sinuMollweide', label: 'Sinu-Mollweide', group: GROUP_EXTENDED_WORLD, factory: 'geoSinuMollweide', wrap: true },
+    { id: 'sinusoidal', label: 'Sinusoidal', group: GROUP_EXTENDED_WORLD, factory: 'geoSinusoidal', wrap: true },
+    { id: 'times', label: 'Times', group: GROUP_EXTENDED_WORLD, factory: 'geoTimes', wrap: true },
+    { id: 'twoPointAzimuthal', label: 'Two-Point Azimuthal', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointAzimuthal', args: [[-60, 0], [60, 0]] },
+    { id: 'twoPointAzimuthalUsa', label: 'Two-Point Azimuthal USA', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointAzimuthalUsa' },
+    { id: 'twoPointEquidistant', label: 'Two-Point Equidistant', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointEquidistant', args: [[-60, 0], [60, 0]] },
+    { id: 'twoPointEquidistantUsa', label: 'Two-Point Equidistant USA', group: GROUP_EXTENDED_SPECIAL, factory: 'geoTwoPointEquidistantUsa' },
+    { id: 'vanDerGrinten', label: 'Van der Grinten', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten', wrap: true },
+    { id: 'vanDerGrinten2', label: 'Van der Grinten II', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten2', wrap: true },
+    { id: 'vanDerGrinten3', label: 'Van der Grinten III', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten3', wrap: true },
+    { id: 'vanDerGrinten4', label: 'Van der Grinten IV', group: GROUP_EXTENDED_WORLD, factory: 'geoVanDerGrinten4', wrap: true },
+    { id: 'wagner', label: 'Wagner', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner', wrap: true },
+    { id: 'wagner4', label: 'Wagner IV', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner4', wrap: true },
+    { id: 'wagner6', label: 'Wagner VI', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner6', wrap: true },
+    { id: 'wagner7', label: 'Wagner VII', group: GROUP_EXTENDED_WORLD, factory: 'geoWagner7', wrap: true },
+    { id: 'wiechel', label: 'Wiechel', group: GROUP_EXTENDED_SPECIAL, factory: 'geoWiechel' },
+    { id: 'winkel3', label: 'Winkel Tripel', group: GROUP_EXTENDED_WORLD, factory: 'geoWinkel3', wrap: true },
+].map(def => ({
+    ...def,
+    source: 'd3-geo-projection',
+    d3Factory: () => makeD3Projection(d3GeoProjection[def.factory](...(def.args || []))),
+}));
+
+const PROJECTION_DEFS = new Map([...CORE_PROJECTION_DEFS, ...EXTENDED_PROJECTION_DEFS].map(def => [def.id, def]));
+
+export const MAP_PROJECTIONS = [...CORE_PROJECTION_DEFS, ...EXTENDED_PROJECTION_DEFS].map(({ id, label, group, source, factory }) => ({ id, label, group, source, factory }));
+const PROJECTION_IDS = new Set(PROJECTION_DEFS.keys());
 
 function clamp(v, lo, hi) {
     return Math.max(lo, Math.min(hi, v));
@@ -60,11 +192,110 @@ export function getMapProjectionLabel(id = state.mapProjection) {
     return MAP_PROJECTIONS.find(p => p.id === id)?.label || MAP_PROJECTIONS[0].label;
 }
 
+export function populateMapProjectionSelect(select) {
+    if (!select) return;
+    const current = PROJECTION_IDS.has(select.value) ? select.value : (PROJECTION_IDS.has(state.mapProjection) ? state.mapProjection : 'equirectangular');
+    select.textContent = '';
+    let group = '';
+    let groupEl = null;
+    for (const projection of MAP_PROJECTIONS) {
+        if (projection.group !== group) {
+            group = projection.group;
+            groupEl = document.createElement('optgroup');
+            groupEl.label = group;
+            select.appendChild(groupEl);
+        }
+        const option = document.createElement('option');
+        option.value = projection.id;
+        option.textContent = projection.label;
+        groupEl.appendChild(option);
+    }
+    select.value = current;
+}
+
 function projectionId() {
     return PROJECTION_IDS.has(state.mapProjection) ? state.mapProjection : 'equirectangular';
 }
 
+function projectionDef(id) {
+    return PROJECTION_DEFS.get(id) || PROJECTION_DEFS.get('equirectangular');
+}
+
+function makeD3Projection(projection, { parallels } = {}) {
+    if (parallels && projection.parallels) projection.parallels(parallels);
+    if (projection.rotate) projection.rotate([0, 0, 0]);
+    if (projection.center) projection.center([0, 0]);
+    if (projection.angle) projection.angle(0);
+    if (projection.scale) projection.scale(1);
+    if (projection.translate) projection.translate([0, 0]);
+    if (projection.precision) projection.precision(0.1);
+    return projection;
+}
+
+function isFiniteD3Point(point) {
+    return Array.isArray(point) &&
+        Number.isFinite(point[0]) &&
+        Number.isFinite(point[1]) &&
+        Math.abs(point[0]) < D3_BOUNDS_LIMIT &&
+        Math.abs(point[1]) < D3_BOUNDS_LIMIT;
+}
+
+function quantile(sorted, t) {
+    if (!sorted.length) return 0;
+    const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * t)));
+    return sorted[idx];
+}
+
+function getD3ProjectionMetrics(def) {
+    if (!def || !def.d3Factory) return null;
+    const cached = d3ProjectionMetricsCache.get(def.id);
+    if (cached) return cached;
+
+    const projection = def.d3Factory();
+    const xs = [];
+    const ys = [];
+    for (let lat = -90; lat <= 90; lat += D3_BOUNDS_STEP) {
+        const sampleLat = clamp(lat, -89.999, 89.999);
+        for (let lon = -180; lon <= 180; lon += D3_BOUNDS_STEP) {
+            const point = projection([lon, sampleLat]);
+            if (!isFiniteD3Point(point)) continue;
+            xs.push(point[0]);
+            ys.push(-point[1]);
+        }
+    }
+
+    let offsetX = 0;
+    let offsetY = 0;
+    let scale = 1;
+    if (xs.length >= 4 && ys.length >= 4) {
+        xs.sort((a, b) => a - b);
+        ys.sort((a, b) => a - b);
+        const minX = quantile(xs, 0.01);
+        const maxX = quantile(xs, 0.99);
+        const minY = quantile(ys, 0.01);
+        const maxY = quantile(ys, 0.99);
+        const spanX = Math.max(EPS, maxX - minX);
+        const spanY = Math.max(EPS, maxY - minY);
+        offsetX = (minX + maxX) / 2;
+        offsetY = (minY + maxY) / 2;
+        scale = 0.98 * Math.min(4 / spanX, 2 / spanY);
+    }
+
+    const metrics = {
+        projection,
+        offsetX,
+        offsetY,
+        scale,
+        maxRawEdge: def.maxRawEdge || 0.8,
+    };
+    d3ProjectionMetricsCache.set(def.id, metrics);
+    return metrics;
+}
+
 function projectionScale(id) {
+    const def = projectionDef(id);
+    if (def.d3Factory) return getD3ProjectionMetrics(def).scale;
+
     switch (id) {
         case 'mercator':
             return 0.98 / mercatorY(MAX_MERCATOR_LAT);
@@ -94,13 +325,19 @@ function projectionScale(id) {
 
 export function getMapProjectionParams() {
     const id = projectionId();
+    const def = projectionDef(id);
+    const metrics = def.d3Factory ? getD3ProjectionMetrics(def) : null;
     return {
         id,
         centerLon: state.mapCenterLon || 0,
         centerLat: clamp(state.mapCenterLat || 0, -HALF_PI, HALF_PI),
         rotation: state.mapRotation || 0,
         scale: projectionScale(id),
-        wrap: id === 'equirectangular' || id === 'mercator' || id === 'naturalEarth1' || id === 'equalEarth',
+        wrap: !!def.wrap,
+        d3Projection: metrics?.projection || null,
+        d3OffsetX: metrics?.offsetX || 0,
+        d3OffsetY: metrics?.offsetY || 0,
+        d3MaxRawEdge: metrics?.maxRawEdge || 0,
     };
 }
 
@@ -345,7 +582,31 @@ function localToWorldVector(localX, localY, localZ, params) {
     return lonLatToVector(lon, lat);
 }
 
-function rawForward(id, lambda, phi, z) {
+function d3RawForward(params, lambda, phi) {
+    if (!params.d3Projection) return null;
+    const point = params.d3Projection([lambda / DEG, phi / DEG]);
+    if (!isFiniteD3Point(point)) return null;
+    return [
+        point[0] - params.d3OffsetX,
+        -point[1] - params.d3OffsetY,
+    ];
+}
+
+function d3RawInvert(params, x, y) {
+    if (!params.d3Projection || typeof params.d3Projection.invert !== 'function') return null;
+    const inverted = params.d3Projection.invert([x + params.d3OffsetX, -(y + params.d3OffsetY)]);
+    if (!Array.isArray(inverted) || inverted.length < 2) return null;
+    const lambda = wrapRadians(inverted[0] * DEG);
+    const phi = clamp(inverted[1] * DEG, -HALF_PI, HALF_PI);
+    if (!Number.isFinite(lambda) || !Number.isFinite(phi)) return null;
+    const check = d3RawForward(params, lambda, phi);
+    if (!check || Math.hypot(check[0] - x, check[1] - y) > 0.08) return null;
+    return [lambda, phi];
+}
+
+function rawForward(id, lambda, phi, z, params = null) {
+    if (params?.d3Projection) return d3RawForward(params, lambda, phi);
+
     switch (id) {
         case 'mercator':
             return [lambda, mercatorY(clamp(phi, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT))];
@@ -411,16 +672,16 @@ function rawInvert(id, x, y) {
     }
 }
 
-function validateWorldInvert(id, rawX, rawY, lambda, phi) {
+function validateWorldInvert(id, rawX, rawY, lambda, phi, params = null) {
     if (!Number.isFinite(lambda) || !Number.isFinite(phi)) return null;
     if (Math.abs(lambda) > PI + 0.02 || Math.abs(phi) > HALF_PI + 0.02) return null;
-    const check = rawForward(id, lambda, phi, Math.cos(phi) * Math.cos(lambda));
+    const check = rawForward(id, lambda, phi, Math.cos(phi) * Math.cos(lambda), params);
     if (!check || Math.hypot(check[0] - rawX, check[1] - rawY) > 0.03) return null;
     return [lambda, clamp(phi, -HALF_PI, HALF_PI)];
 }
 
 export function projectMapPointFromRotated(point, lambdaOffset = 0, params = getMapProjectionParams()) {
-    const raw = rawForward(params.id, point.lambda + lambdaOffset, point.phi, point.z);
+    const raw = rawForward(params.id, point.lambda + lambdaOffset, point.phi, point.z, params);
     if (!raw) return null;
     return {
         x: raw[0] * params.scale,
@@ -509,6 +770,10 @@ export function createMapProjectionProjector(params = getMapProjectionParams()) 
         scale: params.scale,
         wrap: params.wrap,
         centerLon: params.centerLon || 0,
+        d3Projection: params.d3Projection || null,
+        d3OffsetX: params.d3OffsetX || 0,
+        d3OffsetY: params.d3OffsetY || 0,
+        d3MaxRawEdge: params.d3MaxRawEdge || 0,
         x0: orientation.x[0], x1: orientation.x[1], x2: orientation.x[2],
         y0: orientation.y[0], y1: orientation.y[1], y2: orientation.y[2],
         z0: orientation.z[0], z1: orientation.z[1], z2: orientation.z[2],
@@ -542,6 +807,15 @@ function rotateLonLatInto(projector, lon, lat, scratch, off) {
 
 function projectRotatedInto(projector, lambda, phi, localX, localY, localZ, out, off, zOut) {
     const scale = projector.scale;
+    if (projector.d3Projection) {
+        const point = projector.d3Projection([lambda / DEG, phi / DEG]);
+        if (!isFiniteD3Point(point)) return false;
+        out[off] = (point[0] - projector.d3OffsetX) * scale;
+        out[off + 1] = (-point[1] - projector.d3OffsetY) * scale;
+        out[off + 2] = zOut;
+        return true;
+    }
+
     switch (projector.id) {
         case 'mercator':
             out[off] = lambda * scale;
@@ -609,6 +883,11 @@ function projectedEdgeExceeds(out, a, b, maxEdge2) {
 }
 
 function projectionMaxEdge2(projector) {
+    if (projector.d3MaxRawEdge > 0) {
+        const maxEdge = projector.d3MaxRawEdge * projector.scale;
+        return maxEdge * maxEdge;
+    }
+
     let maxRawEdge = 0;
     switch (projector.id) {
         case 'azimuthalEqualArea':
@@ -709,6 +988,14 @@ export function mapPointToXyz(x, y, params = getMapProjectionParams()) {
     const rawX = x / params.scale;
     const rawY = y / params.scale;
 
+    if (params.d3Projection) {
+        const inverted = d3RawInvert(params, rawX, rawY);
+        if (!inverted) return null;
+        const [lambda, phi] = inverted;
+        const cosPhi = Math.cos(phi);
+        return localToWorldVector(cosPhi * Math.sin(lambda), Math.sin(phi), cosPhi * Math.cos(lambda), params);
+    }
+
     if (params.id === 'orthographic') {
         const r2 = rawX * rawX + rawY * rawY;
         if (r2 > 1 + EPS) return null;
@@ -726,7 +1013,7 @@ export function mapPointToXyz(x, y, params = getMapProjectionParams()) {
 
     const inverted = rawInvert(params.id, rawX, rawY);
     if (!inverted) return null;
-    const valid = validateWorldInvert(params.id, rawX, rawY, inverted[0], inverted[1]);
+    const valid = validateWorldInvert(params.id, rawX, rawY, inverted[0], inverted[1], params);
     if (!valid) return null;
     const [lambda, phi] = valid;
     const cosPhi = Math.cos(phi);
